@@ -1,0 +1,19 @@
+[package]
+name = "formiga-farm-contract"
+description = "The design contract between Formiga Desktop and Formiga Farm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+formiga-art.workspace = true
+formiga-core.workspace = true
+formiga-forms.workspace = true
+formiga-travel.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+time.workspace = true

@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# The contract's fixtures are byte-exact: every answer is sealed to the SHA-256 of the snapshot
+# it answers, so they must check out exactly as written, never with CRLF line endings.
+crates/formiga-farm-contract/tests/fixtures/** -text

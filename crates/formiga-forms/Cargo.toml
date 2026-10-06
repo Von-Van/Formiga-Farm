@@ -1,0 +1,20 @@
+[package]
+name = "formiga-forms"
+description = "A creature's form: the semantic design Formiga Farm edits, and how it is drawn"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+formiga-art.workspace = true
+formiga-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+formiga-travel.workspace = true
+png.workspace = true
