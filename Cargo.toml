@@ -14,10 +14,11 @@ authors = ["Formiga contributors"]
 publish = false
 
 [workspace.dependencies]
-# Formiga Desktop's shared crates, all three from the same Desktop release so their types agree.
-# Move all three to a new release's tag together.
+# Formiga Desktop's shared crates, all four from the same Desktop release so their types agree.
+# Move all four to a new release's tag together.
 formiga-art = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.3" }
 formiga-core = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.3" }
+formiga-expansion-rulebook = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.3" }
 formiga-travel = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.3" }
 
 formiga-farm-contract = { path = "crates/formiga-farm-contract" }

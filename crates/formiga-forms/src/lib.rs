@@ -29,7 +29,7 @@ mod render;
 mod sculpt;
 
 pub use design::{Design, Form, bounded_face, plain_face};
-pub use render::{Anchors, DesignRenderer, Intent};
+pub use render::{DesignRenderer, Intent};
 pub use sculpt::{
     Coat, Dimension, Ink, Locomotion, MAX_MARKINGS, MIDDLE, Marking, MarkingKind, NUDGE, Part,
     PartKind, Plan, STEPS, Sculpt, Shape, Slot, Treatment,
