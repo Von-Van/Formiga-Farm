@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 formiga-core.workspace = true
+formiga-expansion-rulebook.workspace = true
 formiga-forms.workspace = true
 formiga-travel.workspace = true
 serde.workspace = true

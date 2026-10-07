@@ -1256,6 +1256,7 @@ name = "formiga-farm-contract"
 version = "0.1.0"
 dependencies = [
  "formiga-core",
+ "formiga-expansion-rulebook",
  "formiga-forms",
  "formiga-travel",
  "serde",
