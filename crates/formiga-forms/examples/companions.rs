@@ -1,7 +1,5 @@
 //! The sample colony as Desktop draws it, beside the sheet: `--example companions -- out.png`
-#[path = "sheet.rs"]
-#[allow(dead_code)]
-mod sheet;
+mod common;
 use formiga_art::{Canvas, CreatureRenderer};
 use formiga_core::ActionKind;
 
@@ -17,7 +15,7 @@ fn main() {
             .enumerate()
         {
             let f = CreatureRenderer::render_studio_frame(&c.appearance, action, 0);
-            sheet::blit(
+            common::blit(
                 &mut canvas,
                 &f,
                 i * cell,
@@ -27,5 +25,5 @@ fn main() {
             );
         }
     }
-    sheet::write(&canvas, &out);
+    common::write(&canvas, &out);
 }
