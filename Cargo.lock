@@ -1255,13 +1255,11 @@ dependencies = [
 name = "formiga-farm-contract"
 version = "0.1.0"
 dependencies = [
- "formiga-art",
  "formiga-core",
  "formiga-forms",
  "formiga-travel",
  "serde",
  "serde_json",
- "sha2",
  "thiserror 2.0.21",
  "time",
 ]
