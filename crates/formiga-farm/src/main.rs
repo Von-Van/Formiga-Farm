@@ -4,6 +4,7 @@
 mod app;
 mod editor;
 mod habitat;
+mod import;
 mod notices;
 mod paint;
 mod presets;
@@ -32,13 +33,17 @@ Usage: formiga-farm [--sample | --sample-edit <N> | --formiga-farm <SESSION DIRE
 For review, without a window:
   --render-presets <PNG>   Every preset at rest and walking
   --render-poses <ID> <PNG>  One preset in every pose, every frame
+      Add --detail <1-4> to either to draw at that many pixels to each frame pixel
+      (Farm's own is 2), or --pixels for Desktop's 48-pixel frames
   --render-habitat <PNG>   The ant farm behind the workbench
+  --import <IMAGE> <PNG>   Read a picture into designs, and draw the picture beside them
 
 For review, of the window itself:
   --snap <PNG>             Open the window, and after --at seconds (3 if not given) save a
                            picture of it and close
   --layer <form|parts|finish|face>  --intent <idle|move|...>  --view <stage|desktop|home|hill>
   --shelf <animals|forms|mine|drafts>  --theme <light|dark>
+  --picture <IMAGE>        Open reading a picture, as From a picture does
 
   --farm-version           Print the newest Farm version this build reads, for packaging
 ";
@@ -54,6 +59,7 @@ struct Args {
     source: Source,
     preset: Option<String>,
     snap: Option<PathBuf>,
+    picture: Option<PathBuf>,
     at: f64,
     layer: Option<Layer>,
     intent: Option<Intent>,
@@ -67,6 +73,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Args>> {
         source: Source::Sample,
         preset: None,
         snap: None,
+        picture: None,
         at: 3.0,
         layer: None,
         intent: None,
@@ -103,6 +110,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Args>> {
             }
             "--preset" => parsed.preset = Some(value("--preset")?),
             "--snap" => parsed.snap = Some(PathBuf::from(value("--snap")?)),
+            "--picture" => parsed.picture = Some(PathBuf::from(value("--picture")?)),
             "--at" => {
                 parsed.at = value("--at")?
                     .parse()
@@ -154,6 +162,37 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Args>> {
     Ok(Some(parsed))
 }
 
+/// The detail a review picture is drawn at: Farm's own unless `--detail` says, or 1 with
+/// `--pixels`.
+fn review_detail(raw: &[String]) -> Result<u32> {
+    if raw.iter().any(|arg| arg == "--pixels") {
+        return Ok(1);
+    }
+    match raw.iter().position(|arg| arg == "--detail") {
+        Some(at) => {
+            let detail: u32 = raw
+                .get(at + 1)
+                .and_then(|value| value.parse().ok())
+                .context("--detail is a number from 1 to 4")?;
+            anyhow::ensure!(
+                (1..=formiga_forms::MAX_DETAIL).contains(&detail),
+                "--detail is a number from 1 to 4"
+            );
+            Ok(detail)
+        }
+        None => Ok(formiga_forms::DETAIL),
+    }
+}
+
+/// How many picture pixels a frame pixel takes in a review sheet: a whole number of each
+/// drawn pixel, about four.
+fn review_scale(detail: u32) -> i32 {
+    match detail {
+        1 => 3,
+        detail => (detail * (4 / detail).max(1)) as i32,
+    }
+}
+
 fn main() -> Result<()> {
     let raw: Vec<String> = std::env::args().skip(1).collect();
     match raw.first().map(String::as_str) {
@@ -163,15 +202,38 @@ fn main() -> Result<()> {
         }
         Some("--render-presets") => {
             let path = raw.get(1).context("--render-presets needs a file")?;
-            review::write_png(&review::presets_sheet(3), path.as_ref())?;
+            let detail = review_detail(&raw)?;
+            review::write_png(
+                &review::presets_sheet(review_scale(detail), detail),
+                path.as_ref(),
+            )?;
             println!("Drew every preset to {path}");
+            return Ok(());
+        }
+        Some("--import") => {
+            let image = raw.get(1).context("--import needs a picture")?;
+            let path = raw.get(2).context("--import needs a file to draw to")?;
+            let started = std::time::Instant::now();
+            let picture = import::open(image.as_ref())?;
+            let takes = import::read_image(&import::small(&picture), &review::stand_in())?;
+            let seconds = started.elapsed().as_secs_f32();
+            let picture = picture.thumbnail(256, 256).to_rgba8();
+            review::write_png(&review::import_sheet(&picture, &takes), path.as_ref())?;
+            for take in &takes {
+                println!("{} ({}%): {}", take.title, take.likeness, take.summary);
+            }
+            println!("Read {image} in {seconds:.1}s and drew it to {path}");
             return Ok(());
         }
         Some("--render-poses") => {
             let id = raw.get(1).context("--render-poses needs a preset")?;
             let path = raw.get(2).context("--render-poses needs a file")?;
             let preset = presets::find(id).with_context(|| format!("no preset {id}"))?;
-            review::write_png(&review::poses_sheet(&preset.design, 4), path.as_ref())?;
+            let detail = review_detail(&raw)?;
+            review::write_png(
+                &review::poses_sheet(&preset.design, review_scale(detail), detail),
+                path.as_ref(),
+            )?;
             println!("Drew {} in every pose to {path}", preset.name);
             return Ok(());
         }
@@ -275,6 +337,9 @@ fn main() -> Result<()> {
                 Some("dark") => cc.egui_ctx.set_theme(eframe::egui::ThemePreference::Dark),
                 Some("light") => cc.egui_ctx.set_theme(eframe::egui::ThemePreference::Light),
                 _ => {}
+            }
+            if let Some(path) = args.picture {
+                app.read_picture(path);
             }
             if let Some(path) = args.snap {
                 app.snap(path, args.at);

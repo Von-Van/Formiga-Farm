@@ -1,10 +1,12 @@
 //! Pictures of designs, drawn once and kept as textures until the design changes: every frame
-//! the stage plays, and a small picture of every preset and draft on the shelves.
+//! the stage plays, and a small picture of every preset and draft on the shelves. A sculpted
+//! form is shown in Farm's own high definition wherever it is shown large, and in Desktop's
+//! 48 pixels wherever Farm shows how it will look in Desktop, Home or Hill.
 
 use eframe::egui;
 use formiga_art::Canvas;
 use formiga_core::AppearanceGenome;
-use formiga_forms::{Design, DesignRenderer, Intent};
+use formiga_forms::{Design, DesignRenderer, Form, Intent};
 use std::collections::HashMap;
 
 pub fn texture(ctx: &egui::Context, name: &str, canvas: &Canvas) -> egui::TextureHandle {
@@ -13,6 +15,12 @@ pub fn texture(ctx: &egui::Context, name: &str, canvas: &Canvas) -> egui::Textur
         &canvas.rgba_bytes(),
     );
     ctx.load_texture(name, image, egui::TextureOptions::NEAREST)
+}
+
+/// Whether a design is drawn by Farm in high definition: a sculpted form is, and a creature
+/// that keeps its body is always Desktop's own pixels.
+pub fn drawn_hd(design: &Design) -> bool {
+    matches!(design.form, Form::Sculpted { .. })
 }
 
 /// Which frame of which design.
@@ -25,6 +33,8 @@ pub struct FrameKey {
     pub frame: u8,
     pub facing_right: bool,
     pub outlined: bool,
+    /// Pixels to each of the frame's: 1 for Desktop's own frame, more for high definition.
+    pub detail: u32,
 }
 
 #[derive(Default)]
@@ -54,18 +64,31 @@ impl Pictures {
         if let Some(texture) = self.frames.get(&key) {
             return texture.clone();
         }
-        let mut canvas = DesignRenderer::intent_frame(
-            design,
-            base,
-            key.intent,
-            key.frame,
-            key.facing_right,
-            reduce_motion,
-        );
-        if key.outlined {
-            formiga_art::CreatureRenderer::outline_frame(&mut canvas);
-        }
-        let texture = texture(ctx, "farm-frame", &canvas);
+        let texture = if key.detail > 1 && drawn_hd(design) {
+            let canvas = DesignRenderer::intent_frame_hd(
+                design,
+                base,
+                key.intent,
+                key.frame,
+                key.facing_right,
+                reduce_motion,
+                key.detail,
+            );
+            texture(ctx, "farm-frame", &canvas)
+        } else {
+            let mut canvas = DesignRenderer::intent_frame(
+                design,
+                base,
+                key.intent,
+                key.frame,
+                key.facing_right,
+                reduce_motion,
+            );
+            if key.outlined {
+                formiga_art::CreatureRenderer::outline_frame(&mut canvas);
+            }
+            texture(ctx, "farm-frame", &canvas)
+        };
         if self.frames.len() > 256 {
             self.frames.clear();
         }
@@ -89,27 +112,54 @@ impl Pictures {
         if let Some(thumb) = self.thumbs.get(name) {
             return thumb.clone();
         }
-        let canvas = DesignRenderer::intent_frame(design, base, Intent::Idle, 0, true, true);
-        let cropped = match canvas.alpha_bounds() {
-            Some((left, top, right, bottom)) => {
-                let (w, h) = (right - left + 1, bottom - top + 1);
-                let mut out = Canvas::new(w, h);
-                for y in 0..h {
-                    for x in 0..w {
-                        out.set(
-                            x as i32,
-                            y as i32,
-                            canvas.get((left + x) as i32, (top + y) as i32),
-                        );
-                    }
-                }
-                out
-            }
-            None => canvas,
+        let hd = drawn_hd(design);
+        let (canvas, detail) = if hd {
+            (
+                DesignRenderer::intent_frame_hd(
+                    design,
+                    base,
+                    Intent::Idle,
+                    0,
+                    true,
+                    true,
+                    formiga_forms::DETAIL,
+                ),
+                formiga_forms::DETAIL as f32,
+            )
+        } else {
+            (
+                DesignRenderer::intent_frame(design, base, Intent::Idle, 0, true, true),
+                1.0,
+            )
         };
-        let size = egui::vec2(cropped.width() as f32, cropped.height() as f32);
-        let thumb = (texture(ctx, name, &cropped), size);
+        let cropped = crop(&canvas);
+        // Measured in the frame's own pixels, however finely it is drawn.
+        let size = egui::vec2(
+            cropped.width() as f32 / detail,
+            cropped.height() as f32 / detail,
+        );
+        let texture = texture(ctx, name, &cropped);
+        let thumb = (texture, size);
         self.thumbs.insert(name.to_owned(), thumb.clone());
         thumb
     }
+}
+
+/// `canvas` cropped to what is drawn on it.
+fn crop(canvas: &Canvas) -> Canvas {
+    let Some((left, top, right, bottom)) = canvas.alpha_bounds() else {
+        return canvas.clone();
+    };
+    let (w, h) = (right - left + 1, bottom - top + 1);
+    let mut out = Canvas::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            out.set(
+                x as i32,
+                y as i32,
+                canvas.get((left + x) as i32, (top + y) as i32),
+            );
+        }
+    }
+    out
 }
