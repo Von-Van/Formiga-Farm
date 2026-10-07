@@ -183,20 +183,22 @@ impl Shape {
         }
     }
 
-    /// How far `(x, y)` is from the shape's edge, in frame pixels: negative inside, positive
-    /// outside. Exact for strokes and polygons and very close for ellipses, which is all smooth
-    /// edges and an even outline need.
-    pub(crate) fn distance(&self, x: f32, y: f32) -> f32 {
+    /// The sine and cosine of the angle an ellipse is turned by, worked out once for a shape
+    /// measured at many points.
+    fn turn(&self) -> (f32, f32) {
         match self {
-            Self::Ellipse {
-                cx,
-                cy,
-                rx,
-                ry,
-                angle,
-            } => {
+            Self::Ellipse { angle, .. } => angle.sin_cos(),
+            _ => (0.0, 1.0),
+        }
+    }
+
+    /// How far `(x, y)` is from the shape's edge, in frame pixels, given its [`Shape::turn`]:
+    /// negative inside, positive outside. Exact for strokes and polygons and very close for
+    /// ellipses, which is all smooth edges and an even outline need.
+    fn distance(&self, x: f32, y: f32, (sin, cos): (f32, f32)) -> f32 {
+        match self {
+            Self::Ellipse { cx, cy, rx, ry, .. } => {
                 let (dx, dy) = (x - cx, y - cy);
-                let (sin, cos) = angle.sin_cos();
                 let u = dx * cos + dy * sin;
                 let v = -dx * sin + dy * cos;
                 let (rx, ry) = (rx.max(0.5), ry.max(0.5));
@@ -242,6 +244,31 @@ impl Shape {
         }
     }
 
+    /// Where the shape can be no more than [`FAR`] from: everywhere further is sure to be
+    /// further from its edge than that, so need not be measured.
+    fn reach(&self) -> Reach {
+        match self {
+            Self::Ellipse { cx, cy, rx, ry, .. } => {
+                // Its edge is at least as far as the shortest radius times how many longest
+                // radii out from the middle a point is, less one.
+                let (rx, ry) = (rx.max(0.5), ry.max(0.5));
+                let (short, long) = (rx.min(ry), rx.max(ry));
+                Reach {
+                    within: (*cx, *cy, *cx, *cy),
+                    by: long * (1.0 + FAR / short),
+                }
+            }
+            Self::Capsule { a, b, ra, rb } => Reach {
+                within: (a.0.min(b.0), a.1.min(b.1), a.0.max(b.0), a.1.max(b.1)),
+                by: ra.max(*rb).max(0.5) + FAR,
+            },
+            Self::Polygon(_) => Reach {
+                within: self.bounds(),
+                by: FAR,
+            },
+        }
+    }
+
     /// The box the shape lies in, in frame pixels: left, top, right, bottom.
     pub(crate) fn bounds(&self) -> (f32, f32, f32, f32) {
         match self {
@@ -266,6 +293,25 @@ impl Shape {
     }
 }
 
+/// How far from a shape's edge a pixel can be and still be drawn differently from one further
+/// out, in frame pixels: as far as the outline reaches, with room to spare. High definition only.
+const FAR: f32 = HD_OUTLINE + 0.25;
+
+/// A box and how far round it a shape's edge is within [`FAR`] of; see [`Shape::reach`].
+struct Reach {
+    within: (f32, f32, f32, f32),
+    by: f32,
+}
+
+impl Reach {
+    fn near(&self, x: f32, y: f32) -> bool {
+        let (l, t, r, b) = self.within;
+        let dx = (l - x).max(x - r).max(0.0);
+        let dy = (t - y).max(y - b).max(0.0);
+        dx * dx + dy * dy <= self.by * self.by
+    }
+}
+
 /// Which pixels of the sheet a set of shapes covers, together. In high definition it also
 /// knows how far each pixel is from the edge, so edges can be drawn smooth and outlines even.
 #[derive(Clone)]
@@ -278,7 +324,8 @@ pub(crate) struct Mask {
     width: i32,
     height: i32,
     /// At one pixel to a frame pixel, -1 for covered and 1 for not; in high definition, how far
-    /// each pixel's centre is from the edge, in frame pixels, negative inside.
+    /// each pixel's centre is from the edge, in frame pixels, negative inside. Past [`FAR`] it
+    /// only says the pixel is at least that far out.
     cells: Vec<f32>,
 }
 
@@ -309,6 +356,8 @@ impl Mask {
         let bottom = (to_sheet(b + margin).ceil() as i32).clamp(0, size);
         let (width, height) = (right - left, bottom - top);
         let mut cells = Vec::with_capacity((width.max(0) * height.max(0)) as usize);
+        let turns: Vec<(f32, f32)> = shapes.iter().map(Shape::turn).collect();
+        let reaches: Vec<Reach> = shapes.iter().map(Shape::reach).collect();
         for y in top..bottom {
             for x in left..right {
                 let (px, py) = ((x as f32 + 0.5) / res as f32, (y as f32 + 0.5) / res as f32);
@@ -321,7 +370,10 @@ impl Mask {
                 } else {
                     shapes
                         .iter()
-                        .map(|s| s.distance(px, py))
+                        .zip(&turns)
+                        .zip(&reaches)
+                        .filter(|(_, reach)| reach.near(px, py))
+                        .map(|((s, &turn), _)| s.distance(px, py, turn))
                         .fold(f32::MAX, f32::min)
                 });
             }
@@ -377,17 +429,17 @@ impl Mask {
         } else {
             0.5 / self.res as f32
         };
-        (self.top..self.top + self.height).flat_map(move |y| {
-            (self.left..self.left + self.width).filter_map(move |x| {
-                (self.distance(x, y) < edge || self.has(x, y)).then_some((x, y))
-            })
-        })
+        self.measured()
+            .filter_map(move |(x, y, d)| (d < edge || d <= 0.0).then_some((x, y)))
     }
 
-    /// Every pixel of the box the mask was measured over, covered or not.
-    pub(crate) fn area(&self) -> impl Iterator<Item = (i32, i32)> + '_ {
-        (self.top..self.top + self.height)
-            .flat_map(move |y| (self.left..self.left + self.width).map(move |x| (x, y)))
+    /// Every pixel of the box the mask was measured over, with how far it is from the edge.
+    pub(crate) fn measured(&self) -> impl Iterator<Item = (i32, i32, f32)> + '_ {
+        let width = self.width.max(1) as usize;
+        self.cells
+            .chunks(width)
+            .zip(self.top..)
+            .flat_map(move |(row, y)| row.iter().zip(self.left..).map(move |(&d, x)| (x, y, d)))
     }
 
     /// Whether a covered pixel is on the mask's edge: the last pixel inside, or in high
@@ -544,9 +596,7 @@ impl Sheet {
     pub(crate) fn outline(&mut self, mask: &Mask, ink: Rgba) {
         if self.hd() {
             let res = self.res as f32;
-            let area: Vec<(i32, i32)> = mask.area().collect();
-            for (x, y) in area {
-                let d = mask.distance(x, y);
+            for (x, y, d) in mask.measured() {
                 if d > -1.0 / res {
                     self.paint(x, y, ink, ((HD_OUTLINE - d) * res + 0.5).clamp(0.0, 1.0));
                 }
@@ -570,8 +620,7 @@ impl Sheet {
     pub(crate) fn flat(&mut self, shapes: &[Shape], fill: Rgba) -> Mask {
         let mask = self.mask(shapes);
         self.outline(&mask, OUTLINE);
-        let pixels: Vec<(i32, i32)> = mask.pixels().collect();
-        for (x, y) in pixels {
+        for (x, y) in mask.pixels() {
             let alpha = mask.coverage(x, y);
             self.paint(x, y, fill, alpha);
         }
@@ -581,8 +630,7 @@ impl Sheet {
     /// Shapes filled in one colour with smooth edges and no outline: a nose, a pad, a claw.
     pub(crate) fn blob(&mut self, shapes: &[Shape], fill: Rgba) {
         let mask = self.mask(shapes);
-        let pixels: Vec<(i32, i32)> = mask.pixels().collect();
-        for (x, y) in pixels {
+        for (x, y) in mask.pixels() {
             let alpha = mask.coverage(x, y);
             self.paint(x, y, fill, alpha);
         }
@@ -595,8 +643,7 @@ impl Sheet {
         if self.hd() {
             let stroke = self.mask(&[Shape::capsule(a, b, 0.3, 0.3)]);
             let res = self.res as f32;
-            let pixels: Vec<(i32, i32)> = stroke.pixels().collect();
-            for (x, y) in pixels {
+            for (x, y) in stroke.pixels() {
                 let keep = ((within.depth(x, y) - 0.7) * res + 0.5).clamp(0.0, 1.0);
                 let alpha = stroke.coverage(x, y) * keep;
                 self.paint(x, y, color, alpha);
@@ -610,6 +657,59 @@ impl Sheet {
             let y = (a.1 + (b.1 - a.1) * t).floor() as i32;
             if within.has(x, y) && !within.edge(x, y) {
                 self.set(x, y, color);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Leaving far pixels unmeasured changes nothing that is drawn: every pixel within reach
+    /// of an edge is measured exactly as before, and every other one is past the outline.
+    #[test]
+    fn far_pixels_left_unmeasured_change_nothing_drawn() {
+        let mut seed = 12345u32;
+        let mut next = move |lo: f32, hi: f32| {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            lo + (hi - lo) * ((seed >> 8) as f32 / (1u32 << 24) as f32)
+        };
+        for round in 0..300 {
+            let mut shapes = Vec::new();
+            for _ in 0..1 + round % 3 {
+                let (x, y) = (next(4.0, 44.0), next(4.0, 44.0));
+                shapes.push(match round % 4 {
+                    0 => Shape::turned(x, y, next(0.2, 14.0), next(0.2, 3.0), next(-3.2, 3.2)),
+                    1 => Shape::capsule(
+                        (x, y),
+                        (next(4.0, 44.0), next(4.0, 44.0)),
+                        next(0.2, 5.0),
+                        next(0.2, 5.0),
+                    ),
+                    2 => Shape::Polygon(vec![
+                        (x, y),
+                        (next(4.0, 44.0), next(4.0, 44.0)),
+                        (x + next(-6.0, 6.0), y + next(-6.0, 6.0)),
+                        (next(4.0, 44.0), next(4.0, 44.0)),
+                    ]),
+                    _ => Shape::ellipse(x, y, next(0.2, 12.0), next(0.2, 12.0)),
+                });
+            }
+            for res in 2..=4 {
+                let mask = Mask::of(&shapes, res);
+                for (x, y, d) in mask.measured() {
+                    let (px, py) = ((x as f32 + 0.5) / res as f32, (y as f32 + 0.5) / res as f32);
+                    let exact = shapes
+                        .iter()
+                        .map(|s| s.distance(px, py, s.turn()))
+                        .fold(f32::MAX, f32::min);
+                    if exact <= FAR {
+                        assert_eq!(d.to_bits(), exact.to_bits(), "round {round} at {x},{y}");
+                    } else {
+                        assert!(d > HD_OUTLINE, "round {round} at {x},{y}: {d} for {exact}");
+                    }
+                }
             }
         }
     }

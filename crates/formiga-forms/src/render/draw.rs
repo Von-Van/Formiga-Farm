@@ -199,9 +199,7 @@ impl Painter<'_> {
         if let Some(body) = &melt {
             // A near leg: outlined only where it is clear of the body.
             let res = self.sheet.res() as f32;
-            let area: Vec<(i32, i32)> = mask.area().collect();
-            for (x, y) in area {
-                let d = mask.distance(x, y);
+            for (x, y, d) in mask.measured() {
                 if d > -1.0 / res {
                     let clear = smoothstep(-0.3, 0.5, body.distance(x, y).min(4.0));
                     let alpha = ((HD_OUTLINE - d) * res + 0.5).clamp(0.0, 1.0) * clear;
@@ -214,16 +212,19 @@ impl Painter<'_> {
         let coat = self.sculpt.coat;
         let treatment = coat.treatment;
         let is_coat = base == self.inks.primary;
-        let pixels: Vec<(i32, i32)> = mask.pixels().collect();
         if self.sheet.hd() {
-            for &(x, y) in &pixels {
-                let (fx, fy) = self.sheet.center(x, y);
-                let color =
-                    self.hd_color(region, frame, base, is_coat, fx, fy, mask.depth(x, y), dim);
+            for (x, y) in mask.pixels() {
                 let mut alpha = mask.coverage(x, y);
                 if let Some(body) = &melt {
                     alpha *= 1.0 - smoothstep(0.7, 1.8, body.depth(x, y));
                 }
+                // Too little of the pixel to paint: no need to work out its colour.
+                if alpha < 0.5 {
+                    continue;
+                }
+                let (fx, fy) = self.sheet.center(x, y);
+                let color =
+                    self.hd_color(region, frame, base, is_coat, fx, fy, mask.depth(x, y), dim);
                 self.sheet.paint(x, y, color, alpha);
             }
             if outlined && matches!(region, Region::Body | Region::Head) {
@@ -231,7 +232,7 @@ impl Painter<'_> {
             }
             return mask;
         }
-        for &(x, y) in &pixels {
+        for (x, y) in mask.pixels() {
             let (fx, fy) = self.sheet.center(x, y);
             let (u, v) = frame.at(fx, fy);
             let (mut color, _) = self.pattern(region, frame, base, is_coat, fx, fy);
@@ -360,8 +361,7 @@ impl Painter<'_> {
             Treatment::Shaggy => (3, true),
             _ => return,
         };
-        let pixels: Vec<(i32, i32)> = mask.pixels().collect();
-        for (x, y) in pixels {
+        for (x, y) in mask.pixels() {
             let (fx, fy) = self.sheet.center(x, y);
             let (_, v) = frame.at(fx, fy);
             if v < -0.5 && !mask.has(x, y - 1) && hash(x, y, 11).is_multiple_of(every) {
@@ -463,9 +463,7 @@ impl Painter<'_> {
         }
         let all = self.sheet.mask(&shapes);
         let res_f = res as f32;
-        let area: Vec<(i32, i32)> = all.area().collect();
-        for (x, y) in area {
-            let d = all.distance(x, y);
+        for (x, y, d) in all.measured() {
             if mask.has(x, y) || d < -1.0 / res_f {
                 continue;
             }
@@ -720,8 +718,7 @@ impl Painter<'_> {
             // no line of its own.
             let mask = self.sheet.mask(&[shape]);
             let base = self.inks.primary;
-            let pixels: Vec<(i32, i32)> = mask.pixels().collect();
-            for (x, y) in pixels {
+            for (x, y) in mask.pixels() {
                 let (fx, fy) = self.sheet.center(x, y);
                 let color = self.hd_color(
                     Region::Head,
@@ -1066,8 +1063,7 @@ impl Painter<'_> {
                 if self.sheet.hd() {
                     // The coat round the hole, a line just inside the hole, and nothing in it.
                     let res = self.sheet.res() as f32;
-                    let pixels: Vec<(i32, i32)> = ring.pixels().collect();
-                    for (x, y) in pixels {
+                    for (x, y) in ring.pixels() {
                         let dh = hole.distance(x, y);
                         let (fx, fy) = self.sheet.center(x, y);
                         let coat = self.hd_color(
@@ -1297,8 +1293,7 @@ impl Painter<'_> {
                 // The inside of the ear, softly inset from its edge.
                 let color = if near { inner } else { far(inner) };
                 let res = self.sheet.res() as f32;
-                let pixels: Vec<(i32, i32)> = mask.pixels().collect();
-                for (x, y) in pixels {
+                for (x, y) in mask.pixels() {
                     let (fx, fy) = self.sheet.center(x, y);
                     // Inset more at the base, where the ear meets the head.
                     let (dx, dy) = (fx - base.0, fy - base.1);
@@ -1720,8 +1715,7 @@ impl Painter<'_> {
             .sheet
             .mask(&[Shape::capsule(a, b, r - 1.0, r * 0.9 - 1.0)]);
         if self.sheet.hd() {
-            let pixels: Vec<(i32, i32)> = neck.pixels().collect();
-            for (x, y) in pixels {
+            for (x, y) in neck.pixels() {
                 let alpha = neck.coverage(x, y) * self.sheet.inked(x, y);
                 let (fx, fy) = self.sheet.center(x, y);
                 let color = self.hd_color(
