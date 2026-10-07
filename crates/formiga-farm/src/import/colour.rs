@@ -1,6 +1,8 @@
 //! Colour arithmetic: sRGB, linear light and Lab, and the handful of colours a picture's
 //! colours gather round.
 
+use crate::paint::to_linear;
+
 /// A colour set so that Farm's softening (three parts colour to one of light) brings it back
 /// to `rgb`, as near as softening allows.
 pub(super) fn unsoften(rgb: [u8; 3]) -> [u8; 3] {
@@ -9,15 +11,6 @@ pub(super) fn unsoften(rgb: [u8; 3]) -> [u8; 3] {
             .round()
             .clamp(0.0, 255.0) as u8
     })
-}
-
-fn to_linear(c: u8) -> f32 {
-    let c = f32::from(c) / 255.0;
-    if c <= 0.040_45 {
-        c / 12.92
-    } else {
-        ((c + 0.055) / 1.055).powf(2.4)
-    }
 }
 
 fn from_linear(c: f32) -> u8 {

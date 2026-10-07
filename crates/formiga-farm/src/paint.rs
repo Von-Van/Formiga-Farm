@@ -32,17 +32,19 @@ pub fn lighter(c: Rgba, by: u8) -> Rgba {
     )
 }
 
+/// One channel of a colour as light, from 0 to 1, rather than as it is stored.
+pub fn to_linear(c: u8) -> f32 {
+    let c = f32::from(c) / 255.0;
+    if c <= 0.040_45 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
 /// How light a colour looks, from 0 to 1.
 pub fn luminance(c: [u8; 3]) -> f32 {
-    let channel = |v: u8| {
-        let v = f32::from(v) / 255.0;
-        if v <= 0.040_45 {
-            v / 12.92
-        } else {
-            ((v + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    0.2126 * channel(c[0]) + 0.7152 * channel(c[1]) + 0.0722 * channel(c[2])
+    0.2126 * to_linear(c[0]) + 0.7152 * to_linear(c[1]) + 0.0722 * to_linear(c[2])
 }
 
 /// How far apart two colours are to the eye: 1 for the same, 21 for black on white.
