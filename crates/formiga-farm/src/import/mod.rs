@@ -41,6 +41,14 @@ use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits, RgbaIm
 use std::io::Cursor;
 use std::path::Path;
 
+mod colour;
+mod mask;
+mod parallel;
+
+use colour::{chroma, delta, from_lab, kmeans, nearest, to_lab, unsoften};
+use mask::{dilate, erode, fill_holes, largest_piece, pieces, trim};
+use parallel::in_parallel;
+
 /// The largest picture read, in bytes, pixels across, and pixels in all.
 pub const MAX_BYTES: u64 = 24 * 1024 * 1024;
 pub const MAX_DIMENSION: u32 = 6_000;
@@ -454,149 +462,6 @@ impl Picture {
     }
 }
 
-/// Every piece of `cells`, joined side to side, as lists of indices.
-fn pieces(cells: &[bool], width: usize, height: usize) -> Vec<Vec<usize>> {
-    let mut seen = vec![false; cells.len()];
-    let mut found = Vec::new();
-    for start in 0..cells.len() {
-        if !cells[start] || seen[start] {
-            continue;
-        }
-        let mut piece = Vec::new();
-        let mut stack = vec![start];
-        seen[start] = true;
-        while let Some(i) = stack.pop() {
-            piece.push(i);
-            let (x, y) = (i % width, i / width);
-            for (nx, ny) in [
-                (x.wrapping_sub(1), y),
-                (x + 1, y),
-                (x, y.wrapping_sub(1)),
-                (x, y + 1),
-            ] {
-                if nx >= width || ny >= height {
-                    continue;
-                }
-                let n = ny * width + nx;
-                if cells[n] && !seen[n] {
-                    seen[n] = true;
-                    stack.push(n);
-                }
-            }
-        }
-        found.push(piece);
-    }
-    found
-}
-
-/// Only the largest piece of `cells`.
-fn largest_piece(cells: &[bool], width: usize, height: usize) -> Vec<bool> {
-    let mut out = vec![false; cells.len()];
-    if let Some(piece) = pieces(cells, width, height)
-        .into_iter()
-        .max_by_key(Vec::len)
-    {
-        for i in piece {
-            out[i] = true;
-        }
-    }
-    out
-}
-
-/// `cells` without whatever thin thing runs off the picture's edge, as the branch a bird sits
-/// on or the line of the ground does, keeping thin parts of the subject itself, as its tail
-/// or legs.
-fn trim(cells: &[bool], width: usize, height: usize) -> Vec<bool> {
-    let count = cells.iter().filter(|c| **c).count();
-    let radius = ((count as f32).sqrt() / 25.0).round().max(1.0) as usize;
-    let thick = dilate(&erode(cells, width, height, radius), width, height, radius);
-    let thick: Vec<bool> = thick.iter().zip(cells).map(|(t, c)| *t && *c).collect();
-    if thick.iter().filter(|c| **c).count() < count / 3 {
-        // The subject is all thin parts: keep it as it is.
-        return cells.to_vec();
-    }
-    let mut out = largest_piece(&thick, width, height);
-    let thin: Vec<bool> = cells.iter().zip(&thick).map(|(c, t)| *c && !t).collect();
-    for piece in pieces(&thin, width, height) {
-        let touches_edge = piece.iter().any(|&i| {
-            let (x, y) = (i % width, i / width);
-            x == 0 || y == 0 || x + 1 == width || y + 1 == height
-        });
-        if !touches_edge {
-            for i in piece {
-                out[i] = true;
-            }
-        }
-    }
-    largest_piece(&out, width, height)
-}
-
-/// `cells` with everything within `radius` of an empty cell (or the edge) emptied.
-fn erode(cells: &[bool], width: usize, height: usize, radius: usize) -> Vec<bool> {
-    let r = radius as isize;
-    let across: Vec<bool> = (0..cells.len())
-        .map(|i| {
-            let (x, y) = ((i % width) as isize, i / width);
-            (-r..=r).all(|d| {
-                let nx = x + d;
-                nx >= 0 && (nx as usize) < width && cells[y * width + nx as usize]
-            })
-        })
-        .collect();
-    (0..cells.len())
-        .map(|i| {
-            let (x, y) = (i % width, (i / width) as isize);
-            (-r..=r).all(|d| {
-                let ny = y + d;
-                ny >= 0 && (ny as usize) < height && across[ny as usize * width + x]
-            })
-        })
-        .collect()
-}
-
-/// `cells` with everything within `radius` of a filled cell filled.
-fn dilate(cells: &[bool], width: usize, height: usize, radius: usize) -> Vec<bool> {
-    let outside: Vec<bool> = cells.iter().map(|c| !c).collect();
-    // Dilating is eroding the outside; the picture's edge counts as inside here.
-    let r = radius as isize;
-    let across: Vec<bool> = (0..cells.len())
-        .map(|i| {
-            let (x, y) = ((i % width) as isize, i / width);
-            (-r..=r).all(|d| {
-                let nx = x + d;
-                nx < 0 || nx as usize >= width || outside[y * width + nx as usize]
-            })
-        })
-        .collect();
-    (0..cells.len())
-        .map(|i| {
-            let (x, y) = (i % width, (i / width) as isize);
-            !(-r..=r).all(|d| {
-                let ny = y + d;
-                ny < 0 || ny as usize >= height || across[ny as usize * width + x]
-            })
-        })
-        .collect()
-}
-
-/// `cells` with every hole that does not reach the edge filled in.
-fn fill_holes(cells: &[bool], width: usize, height: usize) -> Vec<bool> {
-    let outside: Vec<bool> = cells.iter().map(|c| !c).collect();
-    let mut out = cells.to_vec();
-    for piece in pieces(&outside, width, height) {
-        let touches_edge = piece.iter().any(|&i| {
-            let (x, y) = (i % width, i / width);
-            x == 0 || y == 0 || x + 1 == width || y + 1 == height
-        });
-        if !touches_edge {
-            for i in piece {
-                out[i] = true;
-            }
-        }
-    }
-    out
-}
-
 // ---------------------------------------------------------------------------------------------
 // Silhouettes, and the search for the form whose silhouette is closest.
 
@@ -992,35 +857,6 @@ fn search(target: &Silhouette, base: &AppearanceGenome) -> Vec<Found> {
     // Closest first, leaning toward the bodies the picture's build suggests.
     found.sort_by(|a, b| fit(b).total_cmp(&fit(a)));
     found
-}
-
-/// `work` done on every item, across `threads` threads, in the items' order.
-fn in_parallel<T: Send, U: Send>(
-    items: Vec<T>,
-    threads: usize,
-    work: impl Fn(T) -> U + Sync,
-) -> Vec<U> {
-    let count = items.len();
-    let queue = std::sync::Mutex::new(items.into_iter().enumerate().collect::<Vec<_>>());
-    let results = std::sync::Mutex::new((0..count).map(|_| None).collect::<Vec<Option<U>>>());
-    std::thread::scope(|scope| {
-        for _ in 0..threads.min(count.max(1)) {
-            scope.spawn(|| {
-                loop {
-                    let next = queue.lock().expect("the queue is never poisoned").pop();
-                    let Some((index, item)) = next else { break };
-                    let result = work(item);
-                    results.lock().expect("the results are never poisoned")[index] = Some(result);
-                }
-            });
-        }
-    });
-    results
-        .into_inner()
-        .expect("the results are never poisoned")
-        .into_iter()
-        .map(|r| r.expect("every item is worked"))
-        .collect()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1577,151 +1413,6 @@ fn takes(
         });
     }
     takes
-}
-
-// ---------------------------------------------------------------------------------------------
-// Colour arithmetic.
-
-/// A colour set so that Farm's softening (three parts colour to one of light) brings it back
-/// to `rgb`, as near as softening allows.
-fn unsoften(rgb: [u8; 3]) -> [u8; 3] {
-    rgb.map(|c| {
-        ((i32::from(c) * 4 - 220) as f32 / 3.0)
-            .round()
-            .clamp(0.0, 255.0) as u8
-    })
-}
-
-fn to_linear(c: u8) -> f32 {
-    let c = f32::from(c) / 255.0;
-    if c <= 0.040_45 {
-        c / 12.92
-    } else {
-        ((c + 0.055) / 1.055).powf(2.4)
-    }
-}
-
-fn from_linear(c: f32) -> u8 {
-    let c = if c <= 0.003_130_8 {
-        c * 12.92
-    } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
-    };
-    (c * 255.0).round().clamp(0.0, 255.0) as u8
-}
-
-const WHITE: [f32; 3] = [0.950_47, 1.0, 1.088_83];
-
-fn to_lab(rgb: [u8; 3]) -> [f32; 3] {
-    let [r, g, b] = rgb.map(to_linear);
-    let x = 0.412_456_4 * r + 0.357_576_1 * g + 0.180_437_5 * b;
-    let y = 0.212_672_9 * r + 0.715_152_2 * g + 0.072_175 * b;
-    let z = 0.019_333_9 * r + 0.119_192 * g + 0.950_304_1 * b;
-    let f = |t: f32| {
-        if t > 0.008_856 {
-            t.cbrt()
-        } else {
-            7.787 * t + 16.0 / 116.0
-        }
-    };
-    let (fx, fy, fz) = (f(x / WHITE[0]), f(y / WHITE[1]), f(z / WHITE[2]));
-    [116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)]
-}
-
-fn from_lab(lab: [f32; 3]) -> [u8; 3] {
-    let fy = (lab[0] + 16.0) / 116.0;
-    let fx = fy + lab[1] / 500.0;
-    let fz = fy - lab[2] / 200.0;
-    let f = |t: f32| {
-        if t.powi(3) > 0.008_856 {
-            t.powi(3)
-        } else {
-            (t - 16.0 / 116.0) / 7.787
-        }
-    };
-    let (x, y, z) = (f(fx) * WHITE[0], f(fy) * WHITE[1], f(fz) * WHITE[2]);
-    let r = 3.240_454_2 * x - 1.537_138_5 * y - 0.498_531_4 * z;
-    let g = -0.969_266 * x + 1.876_010_8 * y + 0.041_556 * z;
-    let b = 0.055_643_4 * x - 0.204_025_9 * y + 1.057_225_2 * z;
-    [from_linear(r), from_linear(g), from_linear(b)]
-}
-
-/// How different two colours look.
-fn delta(a: [f32; 3], b: [f32; 3]) -> f32 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
-}
-
-fn chroma(lab: [f32; 3]) -> f32 {
-    (lab[1] * lab[1] + lab[2] * lab[2]).sqrt()
-}
-
-fn nearest(centres: &[[f32; 3]], c: [f32; 3]) -> usize {
-    (0..centres.len())
-        .min_by(|a, b| delta(centres[*a], c).total_cmp(&delta(centres[*b], c)))
-        .unwrap_or(0)
-}
-
-/// Up to `k` colours that `colours` gather round, with ones that look alike merged. Always the
-/// same answer for the same colours: it starts from the commonest and then each farthest.
-fn kmeans(colours: &[[f32; 3]], k: usize) -> Vec<[f32; 3]> {
-    if colours.is_empty() {
-        return vec![[60.0, 0.0, 0.0]];
-    }
-    // Start from the colour nearest the middle of them all, then each one farthest from those.
-    let mean = colours.iter().fold([0.0; 3], |acc, c| {
-        [acc[0] + c[0], acc[1] + c[1], acc[2] + c[2]]
-    });
-    let n = colours.len() as f32;
-    let mean = [mean[0] / n, mean[1] / n, mean[2] / n];
-    let mut centres = vec![colours[nearest(colours, mean)]];
-    while centres.len() < k {
-        let far = colours
-            .iter()
-            .copied()
-            .max_by(|a, b| {
-                let da = centres
-                    .iter()
-                    .map(|c| delta(*c, *a))
-                    .fold(f32::MAX, f32::min);
-                let db = centres
-                    .iter()
-                    .map(|c| delta(*c, *b))
-                    .fold(f32::MAX, f32::min);
-                da.total_cmp(&db)
-            })
-            .expect("there are colours");
-        if centres.iter().any(|c| delta(*c, far) < 6.0) {
-            break;
-        }
-        centres.push(far);
-    }
-    for _ in 0..12 {
-        let mut sums = vec![([0.0_f32; 3], 0.0_f32); centres.len()];
-        for c in colours {
-            let i = nearest(&centres, *c);
-            for (sum, value) in sums[i].0.iter_mut().zip(c) {
-                *sum += value;
-            }
-            sums[i].1 += 1.0;
-        }
-        for (centre, (sum, count)) in centres.iter_mut().zip(&sums) {
-            if *count > 0.0 {
-                *centre = [sum[0] / count, sum[1] / count, sum[2] / count];
-            }
-        }
-    }
-    // Colours that look alike are one colour; one that almost nothing is, is dropped.
-    let mut merged: Vec<[f32; 3]> = Vec::new();
-    for c in centres {
-        let used = colours.iter().filter(|x| delta(**x, c) < 10.0).count();
-        if used == 0 && !merged.is_empty() {
-            continue;
-        }
-        if !merged.iter().any(|m| delta(*m, c) < 10.0) {
-            merged.push(c);
-        }
-    }
-    merged
 }
 
 #[cfg(test)]
