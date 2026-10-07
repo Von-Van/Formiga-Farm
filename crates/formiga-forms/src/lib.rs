@@ -45,6 +45,11 @@ pub const DESIGN_VERSION: u32 = 1;
 /// draws a reshaped companion with, at the same size on screen as every other.
 pub const DETAIL: u32 = 2;
 
+/// The most pixels across each frame pixel a frame can be drawn with. Desktop shows a creature
+/// at 2, 3 or 4 screen pixels to each of its own, and draws it at exactly that detail, so every
+/// whole detail from 1 (the 48-pixel frame itself) to this one is drawn.
+pub const MAX_DETAIL: u32 = 4;
+
 /// Why a design cannot be used.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum FormError {

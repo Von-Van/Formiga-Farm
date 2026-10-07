@@ -155,8 +155,8 @@ impl DesignRenderer {
         )
     }
 
-    /// The same frame in high definition, `detail` pixels across for each of its pixels (2 or
-    /// 4; anything else is taken to the nearer). Everything stands where it stands in
+    /// The same frame in high definition, `detail` pixels across for each of its pixels, from 1
+    /// to [`crate::MAX_DETAIL`]; 1 is exactly [`Self::frame`]. Everything stands where it stands in
     /// [`Self::frame`]: a sculpted form is painted in the same style, pixel art with a
     /// companion's outline, with finer curves, three tones of shade and its coat's grain, and
     /// wears Formiga's own face with its corners rounded. A creature that keeps its body is
@@ -282,9 +282,10 @@ impl DesignRenderer {
     }
 }
 
-/// The detail a high-definition frame is drawn at: 2 or 4 pixels to a frame pixel.
+/// The detail a frame is drawn at: from 1 (exactly the 48-pixel frame) to
+/// [`crate::MAX_DETAIL`] pixels to a frame pixel.
 fn detail_of(detail: u32) -> i32 {
-    if detail >= 4 { 4 } else { 2 }
+    detail.clamp(1, crate::MAX_DETAIL) as i32
 }
 
 /// The face a preview of `intent` wears.
@@ -386,17 +387,61 @@ fn blocks(canvas: &Canvas, res: i32) -> Canvas {
 }
 
 /// A pixel face drawn `res` times larger with its corners rounded, as a pixel artist would
-/// redraw it larger: each pixel doubled (and doubled again) so that a corner between two runs
-/// of one colour is filled and a lone corner cut. Every expression keeps every feature, still
-/// in flat pixels, only rounder.
+/// redraw it larger: each pixel doubled, tripled or doubled twice, so that a corner between two
+/// runs of one colour is filled and a lone corner cut. Every expression keeps every feature,
+/// still in flat pixels, only rounder.
 fn rounded_face(face: &Canvas, res: i32) -> Canvas {
-    let mut up = face.clone();
-    let mut scale = 1;
-    while scale < res {
-        up = scale2x(&up);
-        scale *= 2;
+    match res {
+        2 => scale2x(face),
+        3 => scale3x(face),
+        4 => scale2x(&scale2x(face)),
+        _ => face.clone(),
     }
-    up
+}
+
+/// One pass of the Scale3x pixel-art enlargement.
+fn scale3x(canvas: &Canvas) -> Canvas {
+    let (w, h) = (canvas.width() as i32, canvas.height() as i32);
+    let mut out = Canvas::new(w as u32 * 3, h as u32 * 3);
+    let at = |x: i32, y: i32| canvas.get(x.clamp(0, w - 1), y.clamp(0, h - 1));
+    for y in 0..h {
+        for x in 0..w {
+            let (a, b, c) = (at(x - 1, y - 1), at(x, y - 1), at(x + 1, y - 1));
+            let (d, e, f) = (at(x - 1, y), at(x, y), at(x + 1, y));
+            let (g, hh, i) = (at(x - 1, y + 1), at(x, y + 1), at(x + 1, y + 1));
+            let mut cells = [e; 9];
+            if b != hh && d != f {
+                if d == b {
+                    cells[0] = d;
+                }
+                if (d == b && e != c) || (b == f && e != a) {
+                    cells[1] = b;
+                }
+                if b == f {
+                    cells[2] = f;
+                }
+                if (d == b && e != g) || (d == hh && e != a) {
+                    cells[3] = d;
+                }
+                if (b == f && e != i) || (hh == f && e != c) {
+                    cells[5] = f;
+                }
+                if d == hh {
+                    cells[6] = d;
+                }
+                if (d == hh && e != i) || (hh == f && e != g) {
+                    cells[7] = hh;
+                }
+                if hh == f {
+                    cells[8] = f;
+                }
+            }
+            for (n, cell) in cells.into_iter().enumerate() {
+                out.set(x * 3 + n as i32 % 3, y * 3 + n as i32 / 3, cell);
+            }
+        }
+    }
+    out
 }
 
 /// One pass of the Scale2x pixel-art enlargement.

@@ -235,23 +235,52 @@ fn high_definition_draws_the_same_figure_in_the_same_place() {
     let base = formiga_travel::sample::colony(3).creatures[0]
         .appearance
         .clone();
-    let detail = formiga_forms::DETAIL;
+    for detail in 2..=formiga_forms::MAX_DETAIL {
+        for plan in Plan::ALL {
+            let design = sculpted(plan);
+            for clip in clips() {
+                let pixels = DesignRenderer::frame(&design, &base, clip, 0, true, false, face());
+                let fine =
+                    DesignRenderer::frame_hd(&design, &base, clip, 0, true, false, face(), detail);
+                assert_eq!(fine.width(), FRAME_SIZE * detail);
+                let (l, t, r, b) = pixels.alpha_bounds().unwrap();
+                let (fl, ft, fr, fb) = fine.alpha_bounds().unwrap();
+                let near = |coarse: u32, fine: u32| coarse.abs_diff(fine / detail) <= 1;
+                assert!(
+                    near(l, fl) && near(t, ft) && near(r, fr) && near(b, fb),
+                    "{plan:?} {clip:?}: {:?} against {:?}",
+                    (l, t, r, b),
+                    (fl, ft, fr, fb)
+                );
+            }
+        }
+    }
+}
+
+/// Drawn one pixel to a frame pixel, high definition is exactly the 48-pixel frame Desktop
+/// draws today: body, face and anchor.
+#[test]
+fn high_definition_at_one_is_the_frame_itself() {
+    let base = formiga_travel::sample::colony(3).creatures[0]
+        .appearance
+        .clone();
     for plan in Plan::ALL {
         let design = sculpted(plan);
         for clip in clips() {
-            let pixels = DesignRenderer::frame(&design, &base, clip, 0, true, false, face());
-            let fine =
-                DesignRenderer::frame_hd(&design, &base, clip, 0, true, false, face(), detail);
-            assert_eq!(fine.width(), FRAME_SIZE * detail);
-            let (l, t, r, b) = pixels.alpha_bounds().unwrap();
-            let (fl, ft, fr, fb) = fine.alpha_bounds().unwrap();
-            let near = |coarse: u32, fine: u32| coarse.abs_diff(fine / detail) <= 1;
-            assert!(
-                near(l, fl) && near(t, ft) && near(r, fr) && near(b, fb),
-                "{plan:?} {clip:?}: {:?} against {:?}",
-                (l, t, r, b),
-                (fl, ft, fr, fb)
+            assert_eq!(
+                DesignRenderer::frame_hd(&design, &base, clip, 0, false, false, face(), 1),
+                DesignRenderer::frame(&design, &base, clip, 0, false, false, face()),
+                "{plan:?} {clip:?}"
             );
+            let body = DesignRenderer::body_frame(&design, &base, clip, 0, false);
+            let fine = DesignRenderer::body_frame_hd(&design, &base, clip, 0, false, 1);
+            assert_eq!(fine.canvas, body.canvas, "{plan:?} {clip:?}");
+            assert_eq!(fine.face_anchor, body.face_anchor, "{plan:?} {clip:?}");
+        }
+        let face_size = formiga_art::FACE_FRAME_SIZE;
+        for detail in 1..=formiga_forms::MAX_DETAIL {
+            let fine = DesignRenderer::face_frame_hd(&design, &base, face(), detail);
+            assert_eq!(fine.width(), face_size * detail, "{plan:?} {detail}");
         }
     }
 }
@@ -263,7 +292,7 @@ fn high_definition_leaves_a_companion_body_as_desktop_draws_it() {
     let colony = formiga_travel::sample::colony(3);
     let genome = &colony.creatures[0].appearance;
     let design = Design::of(genome, None);
-    let detail = formiga_forms::DETAIL;
+    let detail = 3;
     let pixels = DesignRenderer::frame(&design, genome, ActionKind::Idle, 0, true, false, face());
     let fine = DesignRenderer::frame_hd(
         &design,
@@ -292,34 +321,35 @@ fn high_definition_is_crisp_and_mirrors() {
     let base = formiga_travel::sample::colony(3).creatures[0]
         .appearance
         .clone();
-    let detail = formiga_forms::DETAIL;
-    for plan in Plan::ALL {
-        let design = sculpted(plan);
-        let right = DesignRenderer::frame_hd(
-            &design,
-            &base,
-            ActionKind::Idle,
-            0,
-            true,
-            false,
-            face(),
-            detail,
-        );
-        assert!(
-            right.pixels().iter().all(|p| p.a == 0 || p.a == 255),
-            "{plan:?} has see-through pixels"
-        );
-        let mut left = DesignRenderer::frame_hd(
-            &design,
-            &base,
-            ActionKind::Idle,
-            0,
-            false,
-            false,
-            face(),
-            detail,
-        );
-        left.mirror_horizontal();
-        assert_eq!(left, right, "{plan:?}");
+    for detail in 2..=formiga_forms::MAX_DETAIL {
+        for plan in Plan::ALL {
+            let design = sculpted(plan);
+            let right = DesignRenderer::frame_hd(
+                &design,
+                &base,
+                ActionKind::Idle,
+                0,
+                true,
+                false,
+                face(),
+                detail,
+            );
+            assert!(
+                right.pixels().iter().all(|p| p.a == 0 || p.a == 255),
+                "{plan:?} has see-through pixels"
+            );
+            let mut left = DesignRenderer::frame_hd(
+                &design,
+                &base,
+                ActionKind::Idle,
+                0,
+                false,
+                false,
+                face(),
+                detail,
+            );
+            left.mirror_horizontal();
+            assert_eq!(left, right, "{plan:?} at {detail}");
+        }
     }
 }

@@ -56,19 +56,12 @@ pub fn blit(target: &mut Canvas, source: &Canvas, x: i32, y: i32, scale: i32) {
 }
 
 /// One frame of `intent`, and how many times larger to copy it to show each frame pixel
-/// `scale` across: in high definition when `hd`, or in the 48 pixels of a companion.
-fn picture(design: &Design, intent: Intent, frame: u8, scale: i32, hd: bool) -> (Canvas, i32) {
+/// `scale` across: `detail` pixels to each frame pixel, 1 being the 48 pixels of a companion.
+fn picture(design: &Design, intent: Intent, frame: u8, scale: i32, detail: u32) -> (Canvas, i32) {
     let base = stand_in();
-    if hd {
-        let canvas = DesignRenderer::intent_frame_hd(
-            design,
-            &base,
-            intent,
-            frame,
-            true,
-            false,
-            formiga_forms::DETAIL,
-        );
+    if detail > 1 {
+        let canvas =
+            DesignRenderer::intent_frame_hd(design, &base, intent, frame, true, false, detail);
         let drawn = canvas.width() as i32 / 48;
         (canvas, (scale / drawn).max(1))
     } else {
@@ -84,7 +77,7 @@ fn fill(target: &mut Canvas, x: i32, y: i32, w: i32, h: i32, color: Rgba) {
 }
 
 /// Every preset at rest and walking, a row of each: what `--render-presets` draws.
-pub fn presets_sheet(scale: i32, hd: bool) -> Canvas {
+pub fn presets_sheet(scale: i32, detail: u32) -> Canvas {
     let presets = crate::presets::all();
     let columns = 8;
     let cell = 48 * scale;
@@ -106,7 +99,7 @@ pub fn presets_sheet(scale: i32, hd: bool) -> Canvas {
                 intent,
                 if pane == 0 { 0 } else { 2 },
                 scale,
-                hd,
+                detail,
             );
             blit(&mut canvas, &frame, x, y, by);
         }
@@ -115,7 +108,7 @@ pub fn presets_sheet(scale: i32, hd: bool) -> Canvas {
 }
 
 /// One design in every intent, every frame of each: what `--render-poses` draws.
-pub fn poses_sheet(design: &Design, scale: i32, hd: bool) -> Canvas {
+pub fn poses_sheet(design: &Design, scale: i32, detail: u32) -> Canvas {
     let cell = 48 * scale;
     let columns = 6;
     let mut canvas = Canvas::new(
@@ -132,7 +125,7 @@ pub fn poses_sheet(design: &Design, scale: i32, hd: bool) -> Canvas {
                 Rgba::new(224, 216, 198, 255)
             };
             fill(&mut canvas, x, y, cell, cell, shade);
-            let (picture, by) = picture(design, intent, frame, scale, hd);
+            let (picture, by) = picture(design, intent, frame, scale, detail);
             blit(&mut canvas, &picture, x, y, by);
         }
     }
@@ -180,7 +173,7 @@ pub fn import_sheet(picture: &image::RgbaImage, takes: &[crate::import::Take]) -
 }
 
 fn picture_of(design: &Design, scale: i32) -> (Canvas, i32) {
-    picture(design, Intent::Idle, 0, scale, true)
+    picture(design, Intent::Idle, 0, scale, formiga_forms::DETAIL)
 }
 
 pub fn write_png(canvas: &Canvas, path: &Path) -> Result<()> {

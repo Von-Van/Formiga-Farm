@@ -33,8 +33,8 @@ Usage: formiga-farm [--sample | --sample-edit <N> | --formiga-farm <SESSION DIRE
 For review, without a window:
   --render-presets <PNG>   Every preset at rest and walking
   --render-poses <ID> <PNG>  One preset in every pose, every frame
-      Add --pixels to either to draw Desktop's 48-pixel frames instead of Farm's own
-      high definition
+      Add --detail <1-4> to either to draw at that many pixels to each frame pixel
+      (Farm's own is 2), or --pixels for Desktop's 48-pixel frames
   --render-habitat <PNG>   The ant farm behind the workbench
   --import <IMAGE> <PNG>   Read a picture into designs, and draw the picture beside them
 
@@ -162,6 +162,37 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Args>> {
     Ok(Some(parsed))
 }
 
+/// The detail a review picture is drawn at: Farm's own unless `--detail` says, or 1 with
+/// `--pixels`.
+fn review_detail(raw: &[String]) -> Result<u32> {
+    if raw.iter().any(|arg| arg == "--pixels") {
+        return Ok(1);
+    }
+    match raw.iter().position(|arg| arg == "--detail") {
+        Some(at) => {
+            let detail: u32 = raw
+                .get(at + 1)
+                .and_then(|value| value.parse().ok())
+                .context("--detail is a number from 1 to 4")?;
+            anyhow::ensure!(
+                (1..=formiga_forms::MAX_DETAIL).contains(&detail),
+                "--detail is a number from 1 to 4"
+            );
+            Ok(detail)
+        }
+        None => Ok(formiga_forms::DETAIL),
+    }
+}
+
+/// How many picture pixels a frame pixel takes in a review sheet: a whole number of each
+/// drawn pixel, about four.
+fn review_scale(detail: u32) -> i32 {
+    match detail {
+        1 => 3,
+        detail => (detail * (4 / detail).max(1)) as i32,
+    }
+}
+
 fn main() -> Result<()> {
     let raw: Vec<String> = std::env::args().skip(1).collect();
     match raw.first().map(String::as_str) {
@@ -171,13 +202,11 @@ fn main() -> Result<()> {
         }
         Some("--render-presets") => {
             let path = raw.get(1).context("--render-presets needs a file")?;
-            let pixels = raw.iter().any(|arg| arg == "--pixels");
-            let sheet = if pixels {
-                review::presets_sheet(3, false)
-            } else {
-                review::presets_sheet(4, true)
-            };
-            review::write_png(&sheet, path.as_ref())?;
+            let detail = review_detail(&raw)?;
+            review::write_png(
+                &review::presets_sheet(review_scale(detail), detail),
+                path.as_ref(),
+            )?;
             println!("Drew every preset to {path}");
             return Ok(());
         }
@@ -202,8 +231,11 @@ fn main() -> Result<()> {
             let id = raw.get(1).context("--render-poses needs a preset")?;
             let path = raw.get(2).context("--render-poses needs a file")?;
             let preset = presets::find(id).with_context(|| format!("no preset {id}"))?;
-            let hd = !raw.iter().any(|arg| arg == "--pixels");
-            review::write_png(&review::poses_sheet(&preset.design, 4, hd), path.as_ref())?;
+            let detail = review_detail(&raw)?;
+            review::write_png(
+                &review::poses_sheet(&preset.design, review_scale(detail), detail),
+                path.as_ref(),
+            )?;
             println!("Drew {} in every pose to {path}", preset.name);
             return Ok(());
         }
