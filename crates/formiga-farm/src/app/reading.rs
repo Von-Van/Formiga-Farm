@@ -68,11 +68,12 @@ impl FarmApp {
         let base = self.base.clone();
         let (tell, answer) = mpsc::channel();
         std::thread::spawn(move || {
-            let read = import::read_file(&path, &base).map_err(|error| error.to_string());
-            // The picture itself, small, to show beside what it was read as.
-            let picture = read.is_ok().then(|| image::open(&path).ok()).flatten();
-            let picture = picture.map(|picture| picture.thumbnail(192, 192).to_rgba8());
-            let _ = tell.send(read.map(|takes| (takes, picture)));
+            let read = import::open(&path).and_then(|picture| {
+                let takes = import::read_image(&import::small(&picture), &base)?;
+                // The picture itself, small, to show beside what it was read as.
+                Ok((takes, Some(picture.thumbnail(192, 192).to_rgba8())))
+            });
+            let _ = tell.send(read.map_err(|error| error.to_string()));
         });
         self.reading = Some(Reading {
             name: name.clone(),

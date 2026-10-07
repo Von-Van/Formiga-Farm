@@ -214,12 +214,10 @@ fn main() -> Result<()> {
             let image = raw.get(1).context("--import needs a picture")?;
             let path = raw.get(2).context("--import needs a file to draw to")?;
             let started = std::time::Instant::now();
-            let takes = import::read_file(image.as_ref(), &review::stand_in())?;
+            let picture = import::open(image.as_ref())?;
+            let takes = import::read_image(&import::small(&picture), &review::stand_in())?;
             let seconds = started.elapsed().as_secs_f32();
-            let picture = image::open(image)
-                .context("could not open the picture")?
-                .thumbnail(256, 256)
-                .to_rgba8();
+            let picture = picture.thumbnail(256, 256).to_rgba8();
             review::write_png(&review::import_sheet(&picture, &takes), path.as_ref())?;
             for take in &takes {
                 println!("{} ({}%): {}", take.title, take.likeness, take.summary);

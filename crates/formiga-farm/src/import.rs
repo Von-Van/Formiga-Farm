@@ -36,7 +36,8 @@ use formiga_forms::{
     Coat, Design, DesignRenderer, Dimension, Form, Ink, Intent, MAX_MARKINGS, MIDDLE, Marking,
     MarkingKind, Part, PartKind, Plan, STEPS, Sculpt, Slot, Treatment, plain_face,
 };
-use image::{ImageFormat, ImageReader, Limits, RgbaImage};
+use image::metadata::Orientation;
+use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits, RgbaImage};
 use std::io::Cursor;
 use std::path::Path;
 
@@ -64,18 +65,23 @@ pub struct Take {
     pub summary: String,
 }
 
-/// Read the picture at `path` into a few takes, each drawn over `base`.
-pub fn read_file(path: &Path, base: &AppearanceGenome) -> Result<Vec<Take>> {
+/// The picture as it is read: small enough to be quick.
+pub fn small(image: &DynamicImage) -> RgbaImage {
+    image.thumbnail(ANALYSIS, ANALYSIS).to_rgba8()
+}
+
+/// Open the picture at `path` (PNG, JPEG, WebP or GIF) the right way up.
+pub fn open(path: &Path) -> Result<DynamicImage> {
     let metadata = std::fs::metadata(path).context("could not read the picture")?;
     if metadata.len() > MAX_BYTES {
         bail!("the picture is larger than 24 MB");
     }
-    let bytes = std::fs::read(path).context("could not read the picture")?;
-    read_bytes(&bytes, base)
+    decode(&std::fs::read(path).context("could not read the picture")?)
 }
 
-/// Read a picture's bytes (PNG, JPEG, WebP or GIF) into a few takes.
-pub fn read_bytes(bytes: &[u8], base: &AppearanceGenome) -> Result<Vec<Take>> {
+/// Open a picture's bytes, the right way up: a photo taken with the phone on its side says so
+/// rather than being stored turned.
+pub fn decode(bytes: &[u8]) -> Result<DynamicImage> {
     if bytes.len() as u64 > MAX_BYTES {
         bail!("the picture is larger than 24 MB");
     }
@@ -93,12 +99,16 @@ pub fn read_bytes(bytes: &[u8], base: &AppearanceGenome) -> Result<Vec<Take>> {
     limits.max_image_height = Some(MAX_DIMENSION);
     limits.max_alloc = Some(MAX_PIXELS * 4);
     reader.limits(limits);
-    let image = reader.decode().context("could not open the picture")?;
+    let mut decoder = reader
+        .into_decoder()
+        .context("could not open the picture")?;
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let mut image = DynamicImage::from_decoder(decoder).context("could not open the picture")?;
     if u64::from(image.width()) * u64::from(image.height()) > MAX_PIXELS {
         bail!("the picture has too many pixels");
     }
-    let small = image.thumbnail(ANALYSIS, ANALYSIS).to_rgba8();
-    read_image(&small, base)
+    image.apply_orientation(orientation);
+    Ok(image)
 }
 
 /// Read an already opened picture, no larger than a few hundred pixels across.
@@ -1917,12 +1927,38 @@ mod tests {
         assert!(left[0].likeness.abs_diff(right[0].likeness) <= 5);
     }
 
+    /// A photo taken with the phone on its side is stored as it was taken, with a note to turn
+    /// it; it is read turned.
+    #[test]
+    fn a_picture_is_read_the_right_way_up() {
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut bytes, 40, 20);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().expect("a header");
+            // "Turn a quarter clockwise to view", in the TIFF form an eXIf chunk holds.
+            let exif = [
+                b'M', b'M', 0, 42, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0,
+                0, 0, 0, 0, 0,
+            ];
+            writer
+                .write_chunk(png::chunk::ChunkType(*b"eXIf"), &exif)
+                .expect("the note");
+            writer
+                .write_image_data(&[200; 40 * 20 * 4])
+                .expect("the pixels");
+        }
+        let picture = decode(&bytes).expect("it opens");
+        assert_eq!((picture.width(), picture.height()), (20, 40));
+    }
+
     #[test]
     fn a_picture_with_nothing_in_it_says_so() {
         let base = crate::review::stand_in();
         let clear = RgbaImage::from_pixel(40, 40, image::Rgba([0, 0, 0, 0]));
         assert!(read_image(&clear, &base).is_err());
-        assert!(read_bytes(b"not a picture", &base).is_err());
+        assert!(decode(b"not a picture").is_err());
     }
 
     /// Read a drawing, thumbnailed as a picture opened from a file is.
