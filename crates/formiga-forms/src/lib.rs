@@ -11,9 +11,10 @@
 //!   and its markings.
 //!
 //! The first two are drawn by Desktop's own renderer and nothing here changes how; a creature
-//! that keeps its body keeps every pixel. A sculpted form is drawn by [`DesignRenderer`] at the
-//! same 48-pixel size, wearing the same faces, and answering the same clips, so it can stand in
-//! for a companion anywhere one is drawn.
+//! that keeps its body keeps every pixel. A sculpted form is drawn by [`DesignRenderer`] in the
+//! same 48-pixel frame, wearing the same faces, and answering the same clips, so it can stand in
+//! for a companion anywhere one is drawn; and it can be drawn in high definition, the same frame
+//! with [`DETAIL`] pixels to each of its own, finer pixel art in the same style.
 //!
 //! Every value in a design is small, bounded and named for what it does. A design read from
 //! anywhere else is checked with [`Design::validate`] and refused rather than repaired, and
@@ -38,6 +39,11 @@ pub use sculpt::{
 /// and treatments exist, and what each value means. A design from a newer model may name
 /// something this build does not know, and is refused rather than guessed at.
 pub const DESIGN_VERSION: u32 = 1;
+
+/// How many pixels across each of a frame's 48 a sculpted form is drawn with in high
+/// definition ([`DesignRenderer::frame_hd`]): what Farm shows on its stage, and what Desktop
+/// draws a reshaped companion with, at the same size on screen as every other.
+pub const DETAIL: u32 = 2;
 
 /// Why a design cannot be used.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]

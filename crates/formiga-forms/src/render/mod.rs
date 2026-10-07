@@ -54,7 +54,7 @@ impl DesignRenderer {
         match &design.form {
             Form::Sculpted { sculpt } => {
                 let genome = design.genome(base);
-                let (sheet, figure) = sculpted(sculpt, &genome, clip, frame, reduce_motion);
+                let (sheet, figure) = sculpted(sculpt, &genome, clip, frame, reduce_motion, 1);
                 let canvas = sheet.canvas;
                 RenderedBodyFrame {
                     face_anchor: point(figure.face),
@@ -71,6 +71,68 @@ impl DesignRenderer {
         }
     }
 
+    /// [`Self::body_frame`] in high definition, `detail` pixels to each frame pixel (see
+    /// [`Self::frame_hd`]): what Desktop bakes into an atlas to draw a reshaped companion finely.
+    /// The face anchor stays in the frame's own 48 pixels, as every anchor does; the face goes
+    /// on it from [`Self::face_frame_hd`], its middle on the anchor.
+    pub fn body_frame_hd(
+        design: &Design,
+        base: &AppearanceGenome,
+        clip: impl Into<BodyClip>,
+        frame: u8,
+        reduce_motion: bool,
+        detail: u32,
+    ) -> RenderedBodyFrame {
+        let clip = clip.into();
+        let res = detail_of(detail);
+        match &design.form {
+            Form::Sculpted { sculpt } => {
+                let genome = design.genome(base);
+                let (sheet, figure) = sculpted(sculpt, &genome, clip, frame, reduce_motion, res);
+                let canvas = sheet.canvas;
+                RenderedBodyFrame {
+                    face_anchor: point(figure.face),
+                    alpha_mask: AlphaMask::from_canvas(&canvas),
+                    canvas,
+                }
+            }
+            _ => {
+                let body = CreatureRenderer::render_body_frame(
+                    &design.genome(base),
+                    clip,
+                    frame,
+                    reduce_motion,
+                );
+                let canvas = blocks(&body.canvas, res);
+                RenderedBodyFrame {
+                    face_anchor: body.face_anchor,
+                    alpha_mask: AlphaMask::from_canvas(&canvas),
+                    canvas,
+                }
+            }
+        }
+    }
+
+    /// The face a design wears in high definition, facing right, `detail` times the size of
+    /// [`formiga_art::FACE_FRAME_SIZE`]: Formiga's own face for `face_state`, in a sculpted
+    /// form's eye colour and with its corners rounded, or a companion's face drawn larger.
+    pub fn face_frame_hd(
+        design: &Design,
+        base: &AppearanceGenome,
+        face_state: FaceRenderState,
+        detail: u32,
+    ) -> Canvas {
+        let res = detail_of(detail);
+        let genome = design.genome(base);
+        match &design.form {
+            Form::Sculpted { sculpt } => sculpted_face(sculpt, &genome, face_state, res),
+            _ => blocks(
+                &CreatureRenderer::render_face_frame(&genome, face_state),
+                res,
+            ),
+        }
+    }
+
     /// One whole frame, face and all, as it would be drawn on the desktop.
     pub fn frame(
         design: &Design,
@@ -81,41 +143,45 @@ impl DesignRenderer {
         reduce_motion: bool,
         face_state: FaceRenderState,
     ) -> Canvas {
-        let clip = clip.into();
-        let genome = design.genome(base);
-        let Form::Sculpted { sculpt } = &design.form else {
-            return CreatureRenderer::render_composited_frame(
-                &genome,
-                clip,
-                frame,
-                facing_right,
-                reduce_motion,
-                face_state,
-            );
-        };
-        let mut body = Self::body_frame(design, base, clip, frame, reduce_motion);
-        let mut face_state = face_state;
-        if !facing_right {
-            body.canvas.mirror_horizontal();
-            body.face_anchor.x = FRAME_SIZE as i32 - body.face_anchor.x;
-            face_state.gaze.x = -face_state.gaze.x;
-        }
-        let mut face = CreatureRenderer::render_face_frame(&genome, face_state);
-        recolor_eyes(&mut face, &genome, sculpt.coat.eyes);
-        if !facing_right {
-            face.mirror_horizontal();
-        }
-        let origin_x = body.face_anchor.x - FACE_FRAME_SIZE as i32 / 2;
-        let origin_y = body.face_anchor.y - FACE_FRAME_SIZE as i32 / 2;
-        for y in 0..FACE_FRAME_SIZE as i32 {
-            for x in 0..FACE_FRAME_SIZE as i32 {
-                let pixel = face.get(x, y);
-                if pixel.a > 0 {
-                    body.canvas.set(origin_x + x, origin_y + y, pixel);
-                }
-            }
-        }
-        body.canvas
+        compose(
+            design,
+            base,
+            clip.into(),
+            frame,
+            facing_right,
+            reduce_motion,
+            face_state,
+            1,
+        )
+    }
+
+    /// The same frame in high definition, `detail` pixels across for each of its pixels (2 or
+    /// 4; anything else is taken to the nearer). Everything stands where it stands in
+    /// [`Self::frame`]: a sculpted form is painted in the same style, pixel art with a
+    /// companion's outline, with finer curves, three tones of shade and its coat's grain, and
+    /// wears Formiga's own face with its corners rounded. A creature that keeps its body is
+    /// Desktop's own drawing, each pixel drawn as a square.
+    #[allow(clippy::too_many_arguments)]
+    pub fn frame_hd(
+        design: &Design,
+        base: &AppearanceGenome,
+        clip: impl Into<BodyClip>,
+        frame: u8,
+        facing_right: bool,
+        reduce_motion: bool,
+        face_state: FaceRenderState,
+        detail: u32,
+    ) -> Canvas {
+        compose(
+            design,
+            base,
+            clip.into(),
+            frame,
+            facing_right,
+            reduce_motion,
+            face_state,
+            detail_of(detail),
+        )
     }
 
     /// A whole frame of the clip that shows `intent`, with the face Desktop shows for it.
@@ -127,26 +193,36 @@ impl DesignRenderer {
         facing_right: bool,
         reduce_motion: bool,
     ) -> Canvas {
-        let clip = intent.clip();
-        let BodyClip::Action(action) = clip else {
-            unreachable!("every intent shows an action")
-        };
-        let mut state = formiga_art::FaceRenderState {
-            expression: expression_for(intent),
-            eyelids: formiga_art::EyelidPose::Open,
-            gaze: formiga_art::GazeDirection::new(0, 0),
-        };
-        if action == ActionKind::Sleep {
-            state.eyelids = formiga_art::EyelidPose::Closed;
-        }
         Self::frame(
             design,
             base,
-            clip,
+            intent.clip(),
             frame,
             facing_right,
             reduce_motion,
-            state,
+            intent_face(intent),
+        )
+    }
+
+    /// [`Self::intent_frame`] in high definition (see [`Self::frame_hd`]).
+    pub fn intent_frame_hd(
+        design: &Design,
+        base: &AppearanceGenome,
+        intent: Intent,
+        frame: u8,
+        facing_right: bool,
+        reduce_motion: bool,
+        detail: u32,
+    ) -> Canvas {
+        Self::frame_hd(
+            design,
+            base,
+            intent.clip(),
+            frame,
+            facing_right,
+            reduce_motion,
+            intent_face(intent),
+            detail,
         )
     }
 
@@ -165,7 +241,7 @@ impl DesignRenderer {
                 // Measured from its own resting frame, as Desktop measures a companion's; a
                 // floater's is measured to the ground below it, so it is never set down there.
                 let genome = design.genome(base);
-                let (sheet, _) = sculpted(sculpt, &genome, ActionKind::Idle.into(), 0, true);
+                let (sheet, _) = sculpted(sculpt, &genome, ActionKind::Idle.into(), 0, true, 1);
                 let bottom = sheet
                     .canvas
                     .alpha_bounds()
@@ -189,7 +265,7 @@ impl DesignRenderer {
         let scruff = match &design.form {
             Form::Sculpted { sculpt } => {
                 let genome = design.genome(base);
-                let (_, figure) = sculpted(sculpt, &genome, ActionKind::Idle.into(), 0, true);
+                let (_, figure) = sculpted(sculpt, &genome, ActionKind::Idle.into(), 0, true, 1);
                 point(figure.scruff)
             }
             _ => PixelPoint {
@@ -204,6 +280,156 @@ impl DesignRenderer {
             bounds,
         }
     }
+}
+
+/// The detail a high-definition frame is drawn at: 2 or 4 pixels to a frame pixel.
+fn detail_of(detail: u32) -> i32 {
+    if detail >= 4 { 4 } else { 2 }
+}
+
+/// The face a preview of `intent` wears.
+fn intent_face(intent: Intent) -> FaceRenderState {
+    let BodyClip::Action(action) = intent.clip() else {
+        unreachable!("every intent shows an action")
+    };
+    FaceRenderState {
+        expression: expression_for(intent),
+        eyelids: if action == ActionKind::Sleep {
+            formiga_art::EyelidPose::Closed
+        } else {
+            formiga_art::EyelidPose::Open
+        },
+        gaze: formiga_art::GazeDirection::new(0, 0),
+    }
+}
+
+/// A whole frame, `res` pixels to a frame pixel.
+#[allow(clippy::too_many_arguments)]
+fn compose(
+    design: &Design,
+    base: &AppearanceGenome,
+    clip: BodyClip,
+    frame: u8,
+    facing_right: bool,
+    reduce_motion: bool,
+    face_state: FaceRenderState,
+    res: i32,
+) -> Canvas {
+    let genome = design.genome(base);
+    let Form::Sculpted { sculpt } = &design.form else {
+        let canvas = CreatureRenderer::render_composited_frame(
+            &genome,
+            clip,
+            frame,
+            facing_right,
+            reduce_motion,
+            face_state,
+        );
+        return if res == 1 {
+            canvas
+        } else {
+            blocks(&canvas, res)
+        };
+    };
+    let (sheet, figure) = sculpted(sculpt, &genome, clip, frame, reduce_motion, res);
+    let mut canvas = sheet.canvas;
+    let mut anchor = point(figure.face);
+    let mut face_state = face_state;
+    if !facing_right {
+        canvas.mirror_horizontal();
+        anchor.x = FRAME_SIZE as i32 - anchor.x;
+        face_state.gaze.x = -face_state.gaze.x;
+    }
+    let mut face = sculpted_face(sculpt, &genome, face_state, res);
+    if !facing_right {
+        face.mirror_horizontal();
+    }
+    let origin_x = (anchor.x - FACE_FRAME_SIZE as i32 / 2) * res;
+    let origin_y = (anchor.y - FACE_FRAME_SIZE as i32 / 2) * res;
+    for y in 0..face.height() as i32 {
+        for x in 0..face.width() as i32 {
+            let pixel = face.get(x, y);
+            if pixel.a > 0 {
+                canvas.set(origin_x + x, origin_y + y, pixel);
+            }
+        }
+    }
+    canvas
+}
+
+/// Formiga's own face for `face_state` in a sculpted form's eye colour, `res` pixels to each of
+/// its own, facing right.
+fn sculpted_face(
+    sculpt: &Sculpt,
+    genome: &AppearanceGenome,
+    face_state: FaceRenderState,
+    res: i32,
+) -> Canvas {
+    let mut face = CreatureRenderer::render_face_frame(genome, face_state);
+    recolor_eyes(&mut face, genome, sculpt.coat.eyes);
+    if res == 1 {
+        face
+    } else {
+        rounded_face(&face, res)
+    }
+}
+
+/// `canvas` with each pixel drawn as a `res` by `res` square.
+fn blocks(canvas: &Canvas, res: i32) -> Canvas {
+    let mut out = Canvas::new(canvas.width() * res as u32, canvas.height() * res as u32);
+    for y in 0..out.height() as i32 {
+        for x in 0..out.width() as i32 {
+            out.set(x, y, canvas.get(x / res, y / res));
+        }
+    }
+    out
+}
+
+/// A pixel face drawn `res` times larger with its corners rounded, as a pixel artist would
+/// redraw it larger: each pixel doubled (and doubled again) so that a corner between two runs
+/// of one colour is filled and a lone corner cut. Every expression keeps every feature, still
+/// in flat pixels, only rounder.
+fn rounded_face(face: &Canvas, res: i32) -> Canvas {
+    let mut up = face.clone();
+    let mut scale = 1;
+    while scale < res {
+        up = scale2x(&up);
+        scale *= 2;
+    }
+    up
+}
+
+/// One pass of the Scale2x pixel-art enlargement.
+fn scale2x(canvas: &Canvas) -> Canvas {
+    let (w, h) = (canvas.width() as i32, canvas.height() as i32);
+    let mut out = Canvas::new(w as u32 * 2, h as u32 * 2);
+    let at = |x: i32, y: i32| canvas.get(x.clamp(0, w - 1), y.clamp(0, h - 1));
+    for y in 0..h {
+        for x in 0..w {
+            let e = at(x, y);
+            let (b, d, f, hh) = (at(x, y - 1), at(x - 1, y), at(x + 1, y), at(x, y + 1));
+            let (mut e0, mut e1, mut e2, mut e3) = (e, e, e, e);
+            if b != hh && d != f {
+                if d == b {
+                    e0 = d;
+                }
+                if b == f {
+                    e1 = f;
+                }
+                if d == hh {
+                    e2 = d;
+                }
+                if hh == f {
+                    e3 = f;
+                }
+            }
+            out.set(x * 2, y * 2, e0);
+            out.set(x * 2 + 1, y * 2, e1);
+            out.set(x * 2, y * 2 + 1, e2);
+            out.set(x * 2 + 1, y * 2 + 1, e3);
+        }
+    }
+    out
 }
 
 fn point((x, y): (f32, f32)) -> PixelPoint {
@@ -242,6 +468,7 @@ fn sculpted(
     clip: BodyClip,
     frame: u8,
     reduce_motion: bool,
+    res: i32,
 ) -> (Sheet, Figure) {
     let sculpt = sculpt.normalized();
     let eye_spacing = genome.face.eye_spacing;
@@ -252,7 +479,9 @@ fn sculpted(
     draw::draw(&mut sheet, &sculpt, &figure, pose, eye_spacing);
     // A leap that would reach past the frame is held inside it, a pixel from the edge, as
     // Desktop's atlas keeps every companion's.
+    let laid_out = figure.clone();
     let mut figure = figure;
+    let (mut moved_x, mut moved_y) = (0, 0);
     if let Some((left, top, right, bottom)) = sheet.canvas.alpha_bounds() {
         let edge = FRAME_SIZE as i32 - 2;
         let shift = |low: u32, high: u32| {
@@ -270,7 +499,17 @@ fn sculpted(
             figure = figure.shifted(dx as f32);
             figure.face.1 += dy as f32;
             figure.scruff.1 += dy as f32;
+            (moved_x, moved_y) = (dx, dy);
         }
+    }
+    if res > 1 {
+        // The same figure painted finely, held exactly where the frame above holds it.
+        let mut fine = Sheet::with_res(res);
+        draw::draw(&mut fine, &sculpt, &laid_out, pose, eye_spacing);
+        if moved_x != 0 || moved_y != 0 {
+            fine.canvas.translate(moved_x * res, moved_y * res);
+        }
+        return (fine, figure);
     }
     (sheet, figure)
 }

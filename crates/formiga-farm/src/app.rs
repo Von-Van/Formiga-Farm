@@ -6,6 +6,7 @@
 mod inspector;
 mod pictures;
 mod rail;
+mod reading;
 mod stage;
 pub mod style;
 
@@ -85,6 +86,14 @@ enum Dialog {
     Delete { what: Deletable, name: String },
     /// Desktop ended the session.
     Recalled,
+    /// A picture being read.
+    Reading { name: String },
+    /// What a picture was read as, to start from.
+    Takes {
+        name: String,
+        takes: Vec<crate::import::Take>,
+        picture: Option<egui::TextureHandle>,
+    },
 }
 
 #[derive(Clone)]
@@ -123,6 +132,7 @@ pub struct FarmApp {
     pending: Option<(u32, f64)>,
     expected_revision: Option<String>,
     dialog: Option<Dialog>,
+    reading: Option<reading::Reading>,
     toast: Option<Toast>,
     pictures: Pictures,
     habitat: Option<(Habitat, egui::TextureHandle, [u32; 2])>,
@@ -218,6 +228,7 @@ impl FarmApp {
             pending: None,
             expected_revision,
             dialog: None,
+            reading: None,
             toast: None,
             pictures: Pictures::default(),
             habitat: None,
@@ -762,6 +773,12 @@ impl FarmApp {
                         }
                     });
                 }
+                Dialog::Reading { name } => keep_open = self.reading_dialog(ui, name),
+                Dialog::Takes {
+                    name,
+                    takes,
+                    picture,
+                } => keep_open = self.takes_dialog(ui, name, takes, picture.as_ref()),
                 Dialog::Recalled => {
                     ui.heading("Desktop has closed this session");
                     ui.label("Nothing more will be applied. Your design is kept in Drafts for next time.");
@@ -850,6 +867,8 @@ impl eframe::App for FarmApp {
             self.leave();
         }
         self.listen(&ctx);
+        self.dropped_pictures(&ctx);
+        self.heard_reading(&ctx);
         self.keys(&ctx);
         if !ctx.input(|input| input.pointer.any_down()) {
             self.editor.settle();

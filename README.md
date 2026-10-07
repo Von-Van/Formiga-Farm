@@ -22,6 +22,15 @@ creature stands large and alive while you change it.
   orangutan, a rhinoceros, a giraffe, a snow leopard, a sea turtle, a bald eagle and a koala,
   each a Formiga's idea of the animal. They are only starting points: a panda can grow horns, a
   whale can wear stripes. No animal carries a trait, a rarity or an advantage.
+- **Drawn finer than a companion.** Farm draws its sculpted creatures at twice the detail of
+  Desktop's companions, in the same pixel style: crisp edges and the same outline, with finer
+  shading, fur, feathers and faces. "Desktop's pixels" under the stage shows a design exactly
+  as a companion-sized frame would be.
+- **From a picture.** Choose a picture (PNG, JPEG, WebP or GIF), or drop one on the window, and
+  Farm reads it onto its own bodies: which body it is built like, its proportions and parts, its
+  coat and belly colours, and its stripes, spots, patches, socks or eye patches. It offers a few
+  takes to start from, never the picture itself, and keeps the face you already had. A picture
+  is read on your computer and nothing of it is kept.
 - **Four layers to work in.** *Form* (the body and its proportions), *Parts* (ears, snout, horns,
   tusks, mane, tail, feet, fins, back, wings and shell, each sized, tilted and coloured), *Finish*
   (the coat, its colours and up to four markings) and *Face* (one of Formiga's twelve face
@@ -62,6 +71,7 @@ would. What a rehearsal keeps lasts as long as the window.
 | Seven sculpted body plans, every Desktop clip on each | Preview |
 | Twenty animal presets, seven body forms, Desktop's five companion bodies | Preview |
 | The editor: four layers, undo, layer rolls and resets, before and after | Preview |
+| Finer drawing of sculpted forms, starting from a picture | Preview |
 | Drafts, personal presets, crash recovery | Preview |
 | Previews on the desktop, in Home and on the Hill | Preview |
 | Opening Farm from Desktop's Journal | Not yet in Desktop |
@@ -83,8 +93,10 @@ cargo run --release -p formiga-farm -- --sample-edit 0
 cargo run --release -p formiga-farm -- --from-save "path/to/colony.json" --creature 0
 ```
 
-`--preset animal.giant_panda` opens on a preset. `--help` lists everything, including the review
-pictures drawn without a window (`--render-presets`, `--render-poses`, `--render-habitat`).
+`--preset animal.giant_panda` opens on a preset, and `--picture cat.png` opens reading a
+picture. `--help` lists everything, including the review pictures drawn without a window
+(`--render-presets`, `--render-poses`, `--render-habitat`, and `--import` for what a picture is
+read as). `--pixels` draws the presets and poses at Desktop's companion size instead.
 
 Keys: ⌘Z or Ctrl+Z undoes and adding Shift redoes; ⌘S or Ctrl+S keeps the draft; B shows before
 and after; F turns round; 1 to 8 choose a pose.

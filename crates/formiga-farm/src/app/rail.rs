@@ -28,6 +28,19 @@ impl FarmApp {
         let ink = style::ink(ui.visuals().dark_mode);
         ui.heading("Start from");
         ui.add_space(2.0);
+        if ui
+            .add_sized(
+                [ui.available_width(), 26.0],
+                egui::Button::new("From a picture\u{2026}"),
+            )
+            .on_hover_text(
+                "Farm reads a picture's shape, colours and markings onto one of its own bodies. You can also drop a picture on the window.",
+            )
+            .clicked()
+        {
+            self.choose_picture();
+        }
+        ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             for shelf in Shelf::ALL {
                 if ui

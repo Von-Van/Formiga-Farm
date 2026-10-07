@@ -40,8 +40,17 @@ impl FarmApp {
     }
 
     /// Draw the shown design, `scale` physical pixels to an art pixel, standing with its ground
-    /// row on `floor`, centred on `x`. Returns where the frame went.
-    fn figure(&mut self, ui: &egui::Ui, x: f32, floor: f32, scale: f32, outlined: bool) -> Rect {
+    /// row on `floor`, centred on `x`. Returns where the frame went. `hd` draws a sculpted form
+    /// in Farm's own high definition; otherwise it is Desktop's own pixels, made larger.
+    fn figure(
+        &mut self,
+        ui: &egui::Ui,
+        x: f32,
+        floor: f32,
+        scale: f32,
+        outlined: bool,
+        hd: bool,
+    ) -> Rect {
         let ctx = ui.ctx().clone();
         let points = scale / ctx.pixels_per_point();
         let design = self.shown().clone();
@@ -55,6 +64,7 @@ impl FarmApp {
             frame: self.frame_now(),
             facing_right: self.facing_right,
             outlined,
+            detail: if hd { formiga_forms::DETAIL } else { 1 },
         };
         let baseline = DesignRenderer::resting_baseline(&design, &self.base, self.reduce_motion());
         let texture = self.pictures.frame(
@@ -106,7 +116,7 @@ impl FarmApp {
                     ],
                     Stroke::new(2.0, ink.stage_edge),
                 );
-                let rect = self.figure(ui, chamber.center().x, floor, scale, false);
+                let rect = self.figure(ui, chamber.center().x, floor, scale, false, !self.grid);
                 if self.grid {
                     let pixel = scale / ppp;
                     let line = Stroke::new(1.0, ink.line.gamma_multiply(0.35));
@@ -188,6 +198,7 @@ impl FarmApp {
                     dock.min.y,
                     2.0,
                     true,
+                    false,
                 );
                 self.figure(
                     ui,
@@ -195,6 +206,7 @@ impl FarmApp {
                     window.min.y,
                     2.0,
                     true,
+                    false,
                 );
                 caption(
                     ui,
@@ -233,7 +245,7 @@ impl FarmApp {
                     let b = Pos2::new(center.x + w * t, center.y + h - h * t);
                     ui.painter().line_segment([a, b], Stroke::new(1.0, wood[1]));
                 }
-                self.figure(ui, center.x, center.y, 4.0, false);
+                self.figure(ui, center.x, center.y, 4.0, false, false);
                 caption(
                     ui,
                     Pos2::new(center.x, center.y + h + 10.0),
@@ -267,7 +279,7 @@ impl FarmApp {
                     Stroke::NONE,
                 ));
                 let floor = ground - field.height() * 0.08 + 1.0;
-                self.figure(ui, field.center().x, floor, 3.0, false);
+                self.figure(ui, field.center().x, floor, 3.0, false, false);
                 caption(
                     ui,
                     Pos2::new(field.center().x, field.max.y + 6.0),
@@ -340,7 +352,11 @@ impl FarmApp {
             }
             if self.view == View::Stage {
                 ui.separator();
-                ui.checkbox(&mut self.grid, "Pixel grid");
+                ui.checkbox(&mut self.grid, "Desktop's pixels")
+                    .on_hover_text(
+                        "Show it pixel by pixel, at the 48 pixels Desktop draws it with, \
+                     instead of Farm's own smooth drawing.",
+                    );
             }
         });
     }

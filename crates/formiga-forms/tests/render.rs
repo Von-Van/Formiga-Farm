@@ -227,3 +227,99 @@ fn every_plan_has_a_silhouette_of_its_own() {
         }
     }
 }
+
+/// High definition draws the same figure in the same place, only finer: every plan, every clip,
+/// covers the same part of the frame to within a pixel either way.
+#[test]
+fn high_definition_draws_the_same_figure_in_the_same_place() {
+    let base = formiga_travel::sample::colony(3).creatures[0]
+        .appearance
+        .clone();
+    let detail = formiga_forms::DETAIL;
+    for plan in Plan::ALL {
+        let design = sculpted(plan);
+        for clip in clips() {
+            let pixels = DesignRenderer::frame(&design, &base, clip, 0, true, false, face());
+            let fine =
+                DesignRenderer::frame_hd(&design, &base, clip, 0, true, false, face(), detail);
+            assert_eq!(fine.width(), FRAME_SIZE * detail);
+            let (l, t, r, b) = pixels.alpha_bounds().unwrap();
+            let (fl, ft, fr, fb) = fine.alpha_bounds().unwrap();
+            let near = |coarse: u32, fine: u32| coarse.abs_diff(fine / detail) <= 1;
+            assert!(
+                near(l, fl) && near(t, ft) && near(r, fr) && near(b, fb),
+                "{plan:?} {clip:?}: {:?} against {:?}",
+                (l, t, r, b),
+                (fl, ft, fr, fb)
+            );
+        }
+    }
+}
+
+/// In high definition a creature that keeps its body is still Desktop's own drawing, pixel for
+/// pixel, each pixel simply drawn larger.
+#[test]
+fn high_definition_leaves_a_companion_body_as_desktop_draws_it() {
+    let colony = formiga_travel::sample::colony(3);
+    let genome = &colony.creatures[0].appearance;
+    let design = Design::of(genome, None);
+    let detail = formiga_forms::DETAIL;
+    let pixels = DesignRenderer::frame(&design, genome, ActionKind::Idle, 0, true, false, face());
+    let fine = DesignRenderer::frame_hd(
+        &design,
+        genome,
+        ActionKind::Idle,
+        0,
+        true,
+        false,
+        face(),
+        detail,
+    );
+    for y in 0..fine.height() as i32 {
+        for x in 0..fine.width() as i32 {
+            assert_eq!(
+                fine.get(x, y),
+                pixels.get(x / detail as i32, y / detail as i32)
+            );
+        }
+    }
+}
+
+/// High definition is pixel art too: every pixel is wholly there or not, and facing left is
+/// the mirror of facing right.
+#[test]
+fn high_definition_is_crisp_and_mirrors() {
+    let base = formiga_travel::sample::colony(3).creatures[0]
+        .appearance
+        .clone();
+    let detail = formiga_forms::DETAIL;
+    for plan in Plan::ALL {
+        let design = sculpted(plan);
+        let right = DesignRenderer::frame_hd(
+            &design,
+            &base,
+            ActionKind::Idle,
+            0,
+            true,
+            false,
+            face(),
+            detail,
+        );
+        assert!(
+            right.pixels().iter().all(|p| p.a == 0 || p.a == 255),
+            "{plan:?} has see-through pixels"
+        );
+        let mut left = DesignRenderer::frame_hd(
+            &design,
+            &base,
+            ActionKind::Idle,
+            0,
+            false,
+            false,
+            face(),
+            detail,
+        );
+        left.mirror_horizontal();
+        assert_eq!(left, right, "{plan:?}");
+    }
+}
