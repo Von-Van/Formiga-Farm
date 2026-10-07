@@ -88,9 +88,9 @@ fn noise(x: f32, seed: u32) -> f32 {
 }
 
 /// The frame's wood, the soil's bands from the top down, and the colour a tunnel is dug in.
-const WOOD: [u32; 3] = [0x8a5a3c, 0xa8724c, 0x6c442e];
-const STRATA: [u32; 4] = [0x7c5a44, 0x94704f, 0xa98a62, 0x8f6a52];
-const TUNNEL: u32 = 0x5a3f31;
+pub(crate) const WOOD: [u32; 3] = [0x8a5a3c, 0xa8724c, 0x6c442e];
+pub(crate) const STRATA: [u32; 4] = [0x7c5a44, 0x94704f, 0xa98a62, 0x8f6a52];
+pub(crate) const TUNNEL: u32 = 0x5a3f31;
 
 impl Habitat {
     /// A habitat `width` by `height` habitat pixels. The same size, seed and daylight always draw

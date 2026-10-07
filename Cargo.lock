@@ -1057,7 +1057,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1192,8 +1192,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.66.6"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.6#241b8e4a3b974db0fea9b7ad7b822d82cd9c2d58"
+version = "0.67.3"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1205,8 +1205,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.66.6"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.6#241b8e4a3b974db0fea9b7ad7b822d82cd9c2d58"
+version = "0.67.3"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1217,6 +1217,18 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "formiga-expansion-rulebook"
+version = "0.67.3"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
+dependencies = [
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1270,12 +1282,12 @@ dependencies = [
 
 [[package]]
 name = "formiga-travel"
-version = "0.66.6"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.6#241b8e4a3b974db0fea9b7ad7b822d82cd9c2d58"
+version = "0.67.3"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
 dependencies = [
  "formiga-art",
  "formiga-core",
- "getrandom 0.4.3",
+ "formiga-expansion-rulebook",
  "serde",
  "serde_json",
  "sha2",
@@ -2958,7 +2970,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3295,7 +3307,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.5",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3528,7 +3540,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4064,7 +4076,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

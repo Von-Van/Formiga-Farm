@@ -74,8 +74,9 @@ would. What a rehearsal keeps lasts as long as the window.
 | Finer drawing of sculpted forms, starting from a picture | Preview |
 | Drafts, personal presets, crash recovery | Preview |
 | Previews on the desktop, in Home and on the Hill | Preview |
-| Opening Farm from Desktop's Journal | Not yet in Desktop |
-| Packaging | Not yet |
+| Opening Farm from Desktop's Journal | Not yet in a Desktop release |
+| Packaging for macOS | A universal `Formiga Farm.app` with the bundle id and Farm version Desktop looks for, a zip and a disk image, each with its checksum. Not yet run on a Mac |
+| Packaging for Windows | A per-user installer that writes the registry values Desktop reads, and a portable zip, each with its checksum. Not yet run on Windows |
 
 ## Running it
 
@@ -121,9 +122,26 @@ it. Deleting a draft or preset never changes anyone in the colony.
 
 ## Building
 
-Rust 1.97.1. The shared crates come from Formiga Desktop by release tag. The gate CI runs on
-macOS and Windows:
+Rust 1.97.1. The shared crates come from Formiga Desktop by one release tag, `v0.67.3`. The gate
+CI runs on macOS and Windows:
 
 ```bash
 cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
 ```
+
+### Packaging
+
+- **macOS.** `scripts/package-macos.sh` builds a universal `Formiga Farm.app`, with the bundle id
+  and Farm version Desktop looks for, plus a zip and a disk image beside it in `dist/`.
+- **Windows.** `scripts/package-windows.ps1` builds a portable zip and a per-user installer that
+  writes the registry values Desktop reads. The installer needs the WiX 4 command-line tool.
+
+Both scripts ask the built binary for the Farm version it reads (`--farm-version`) and for its
+icon (`--icon <folder>`), so a package can never claim a version it does not read. Pushing a `v*`
+tag runs both on GitHub's own macOS and Windows machines and publishes a release with every
+package and its checksum, its notes taken from that version's section of
+[CHANGELOG.md](CHANGELOG.md); a pull request that changes the packaging builds every package the
+same way without publishing anything. Both sign when `FORMIGA_CODESIGN_IDENTITY` (and
+`FORMIGA_NOTARY_PROFILE`) or `FORMIGA_SIGNTOOL_CERT_SHA1` is set, and otherwise ship unsigned.
+`scripts/set-version.sh <version> [<desktop tag>]` writes a new version, or a new Desktop tag,
+everywhere it is named; `--check` says whether every place agrees.

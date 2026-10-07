@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Formiga Farm for one user, where Formiga Desktop looks for it: the registry key and values
+     are the ones formiga-farm-contract's discovery module names. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="Formiga Farm"
+      Manufacturer="Formiga"
+      Version="$(FarmVersion)"
+      UpgradeCode="A380E3FC-1215-43F3-BDAF-53DDE3A3D01C"
+      Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer Formiga Farm is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="FarmIcon" SourceFile="$(FarmIcon)" />
+    <Property Id="ARPPRODUCTICON" Value="FarmIcon" />
+    <Property Id="ARPCOMMENTS" Value="Where your Formiga colony's creatures are made and remade." />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Formiga Farm">
+        <Component Id="FarmApplication" Guid="9AD9A960-2286-4C77-B938-1DFF440E7C9F">
+          <File Id="FarmExecutable" Source="$(FarmExe)" Name="Formiga Farm.exe" KeyPath="yes" />
+          <RegistryValue
+              Root="HKCU"
+              Key="Software\Formiga\Farm"
+              Name="Path"
+              Type="string"
+              Value="[INSTALLFOLDER]Formiga Farm.exe" />
+          <RegistryValue
+              Root="HKCU"
+              Key="Software\Formiga\Farm"
+              Name="Version"
+              Type="string"
+              Value="$(FarmVersion)" />
+          <!-- The newest Farm version it reads, which is not the app's own version above. -->
+          <RegistryValue
+              Root="HKCU"
+              Key="Software\Formiga\Farm"
+              Name="FarmVersion"
+              Type="integer"
+              Value="$(FarmFormatVersion)" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Formiga">
+        <Component Id="FarmShortcut" Guid="A63B2FEA-6DA1-44B8-9C89-1C6478EEA386">
+          <Shortcut
+              Id="FarmStartMenuShortcut"
+              Name="Formiga Farm"
+              Target="[INSTALLFOLDER]Formiga Farm.exe"
+              WorkingDirectory="INSTALLFOLDER"
+              Icon="FarmIcon" />
+          <RemoveFolder Id="RemoveFarmProgramsFolder" On="uninstall" />
+          <RegistryValue
+              Root="HKCU"
+              Key="Software\Formiga\Farm"
+              Name="StartMenuShortcut"
+              Type="integer"
+              Value="1"
+              KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="Formiga Farm" Level="1">
+      <ComponentRef Id="FarmApplication" />
+      <ComponentRef Id="FarmShortcut" />
+    </Feature>
+  </Package>
+</Wix>

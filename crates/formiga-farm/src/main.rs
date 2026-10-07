@@ -4,6 +4,7 @@
 mod app;
 mod editor;
 mod habitat;
+mod icon;
 mod import;
 mod notices;
 mod paint;
@@ -46,6 +47,7 @@ For review, of the window itself:
   --picture <IMAGE>        Open reading a picture, as From a picture does
 
   --farm-version           Print the newest Farm version this build reads, for packaging
+  --icon <FOLDER>          Write Farm's icon as .icns, .ico and .png, for packaging
 ";
 
 enum Source {
@@ -200,6 +202,19 @@ fn main() -> Result<()> {
             println!("{}", formiga_farm_contract::FARM_FORMAT_VERSION);
             return Ok(());
         }
+        // For the packaging scripts too: Farm's icon, for the bundle and the installer.
+        Some("--icon") => {
+            let folder = PathBuf::from(
+                raw.get(1)
+                    .context("--icon needs a folder to write the icon into")?,
+            );
+            std::fs::create_dir_all(&folder)?;
+            std::fs::write(folder.join("FormigaFarm.icns"), icon::icns())?;
+            std::fs::write(folder.join("FormigaFarm.ico"), icon::ico())?;
+            std::fs::write(folder.join("FormigaFarm.png"), icon::png(&icon::at(1024)))?;
+            println!("Wrote Farm's icon to {}", folder.display());
+            return Ok(());
+        }
         Some("--render-presets") => {
             let path = raw.get(1).context("--render-presets needs a file")?;
             let detail = review_detail(&raw)?;
@@ -306,7 +321,8 @@ fn main() -> Result<()> {
         .with_inner_size(place.map_or([1240.0 * text_scale.min(1.2), 800.0], |p| {
             [p.width, p.height]
         }))
-        .with_min_inner_size([620.0, 520.0]);
+        .with_min_inner_size([620.0, 520.0])
+        .with_icon(icon::window());
     if let Some(place) = place {
         viewport = viewport.with_position([place.x, place.y]);
     }
