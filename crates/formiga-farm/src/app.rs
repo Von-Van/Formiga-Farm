@@ -323,6 +323,13 @@ impl FarmApp {
         }
     }
 
+    /// Keep the draft now, whatever the count says, and say so: the owner asked.
+    fn keep_draft_now(&mut self) {
+        self.kept_changes = self.editor.changes.wrapping_sub(1);
+        self.keep_draft();
+        self.say("Draft kept.", false);
+    }
+
     /// Keep the draft once the owner has paused, so a crash loses nothing.
     fn keep_draft_when_paused(&mut self) {
         if self.editor.changes != self.seen_changes {
@@ -411,6 +418,7 @@ impl FarmApp {
         }
         let command = egui::Modifiers::COMMAND;
         let shift_command = egui::Modifiers::COMMAND | egui::Modifiers::SHIFT;
+        let mut keep_now = false;
         ctx.input_mut(|input| {
             if input.consume_key(shift_command, egui::Key::Z) {
                 self.editor.redo();
@@ -420,7 +428,7 @@ impl FarmApp {
                 self.editor.redo();
             }
             if input.consume_key(command, egui::Key::S) {
-                self.kept_changes = u64::MAX;
+                keep_now = true;
             }
             if input.consume_key(egui::Modifiers::NONE, egui::Key::B) {
                 self.before = !self.before;
@@ -446,11 +454,8 @@ impl FarmApp {
                 }
             }
         });
-        if self.kept_changes == u64::MAX {
-            // Asked to keep the draft now, whatever the count says.
-            self.kept_changes = self.editor.changes.wrapping_sub(1);
-            self.keep_draft();
-            self.say("Draft kept.", false);
+        if keep_now {
+            self.keep_draft_now();
         }
     }
 
@@ -652,9 +657,7 @@ impl FarmApp {
                     .on_hover_text("Drafts are kept as you go, too. \u{2318}S / Ctrl+S")
                     .clicked()
                 {
-                    self.kept_changes = self.editor.changes.wrapping_sub(1);
-                    self.keep_draft();
-                    self.say("Draft kept.", false);
+                    self.keep_draft_now();
                 }
                 if let Some(label) = self.host.label() {
                     ui.label(egui::RichText::new(label).small().color(ink.faint));
