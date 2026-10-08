@@ -72,8 +72,13 @@ fn picture(design: &Design, intent: Intent, frame: u8, scale: i32, detail: u32) 
     }
 }
 
-fn fill(target: &mut Canvas, x: i32, y: i32, w: i32, h: i32, color: Rgba) {
-    target.fill_rect(x, y, w, h, color);
+/// The paper behind cell `n` of a sheet, light and dark by turns like a chequerboard.
+fn shade(n: i32) -> Rgba {
+    if n % 2 == 0 {
+        Rgba::new(238, 232, 216, 255)
+    } else {
+        Rgba::new(224, 216, 198, 255)
+    }
 }
 
 /// Every preset at rest and walking, a row of each: what `--render-presets` draws.
@@ -88,12 +93,7 @@ pub fn presets_sheet(scale: i32, detail: u32) -> Canvas {
         for (pane, intent) in [Intent::Idle, Intent::Move].into_iter().enumerate() {
             let x = (col * 2 + pane as i32) * cell;
             let y = row * cell;
-            let shade = if (col + row) % 2 == 0 {
-                Rgba::new(238, 232, 216, 255)
-            } else {
-                Rgba::new(224, 216, 198, 255)
-            };
-            fill(&mut canvas, x, y, cell, cell, shade);
+            canvas.fill_rect(x, y, cell, cell, shade(col + row));
             let (frame, by) = picture(
                 &preset.design,
                 intent,
@@ -119,12 +119,7 @@ pub fn poses_sheet(design: &Design, scale: i32, detail: u32) -> Canvas {
         let (frames, _) = DesignRenderer::timing(intent);
         for frame in 0..frames.min(columns as u8) {
             let (x, y) = (i32::from(frame) * cell, row as i32 * cell);
-            let shade = if (row as i32 + i32::from(frame)) % 2 == 0 {
-                Rgba::new(238, 232, 216, 255)
-            } else {
-                Rgba::new(224, 216, 198, 255)
-            };
-            fill(&mut canvas, x, y, cell, cell, shade);
+            canvas.fill_rect(x, y, cell, cell, shade(row as i32 + i32::from(frame)));
             let (picture, by) = picture(design, intent, frame, scale, detail);
             blit(&mut canvas, &picture, x, y, by);
         }
@@ -138,12 +133,7 @@ pub fn import_sheet(picture: &image::RgbaImage, takes: &[crate::import::Take]) -
     let cell = 48 * scale;
     let mut canvas = Canvas::new(((takes.len() + 1) as i32 * cell) as u32, cell as u32);
     for pane in 0..=takes.len() as i32 {
-        let shade = if pane % 2 == 0 {
-            Rgba::new(238, 232, 216, 255)
-        } else {
-            Rgba::new(224, 216, 198, 255)
-        };
-        fill(&mut canvas, pane * cell, 0, cell, cell, shade);
+        canvas.fill_rect(pane * cell, 0, cell, cell, shade(pane));
     }
     // The picture, fitted into the first pane.
     let fit = cell as f32 / picture.width().max(picture.height()) as f32;
