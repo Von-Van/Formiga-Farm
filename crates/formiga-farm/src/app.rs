@@ -168,9 +168,7 @@ impl FarmApp {
             start,
         } = opening;
         let base = snapshot.base_genome()?;
-        let text_scale =
-            f32::from(snapshot.presentation.text_scale_percent.clamp(100, 150)) / 100.0;
-        style::apply(ctx, text_scale);
+        style::apply(ctx, style::text_scale(&snapshot.presentation));
         match snapshot.presentation.theme {
             formiga_travel::Theme::Light => ctx.set_theme(egui::ThemePreference::Light),
             formiga_travel::Theme::Dark => ctx.set_theme(egui::ThemePreference::Dark),
@@ -323,6 +321,13 @@ impl FarmApp {
         }
     }
 
+    /// Keep the draft now, whatever the count says, and say so: the owner asked.
+    fn keep_draft_now(&mut self) {
+        self.kept_changes = self.editor.changes.wrapping_sub(1);
+        self.keep_draft();
+        self.say("Draft kept.", false);
+    }
+
     /// Keep the draft once the owner has paused, so a crash loses nothing.
     fn keep_draft_when_paused(&mut self) {
         if self.editor.changes != self.seen_changes {
@@ -411,6 +416,7 @@ impl FarmApp {
         }
         let command = egui::Modifiers::COMMAND;
         let shift_command = egui::Modifiers::COMMAND | egui::Modifiers::SHIFT;
+        let mut keep_now = false;
         ctx.input_mut(|input| {
             if input.consume_key(shift_command, egui::Key::Z) {
                 self.editor.redo();
@@ -420,7 +426,7 @@ impl FarmApp {
                 self.editor.redo();
             }
             if input.consume_key(command, egui::Key::S) {
-                self.kept_changes = u64::MAX;
+                keep_now = true;
             }
             if input.consume_key(egui::Modifiers::NONE, egui::Key::B) {
                 self.before = !self.before;
@@ -446,11 +452,8 @@ impl FarmApp {
                 }
             }
         });
-        if self.kept_changes == u64::MAX {
-            // Asked to keep the draft now, whatever the count says.
-            self.kept_changes = self.editor.changes.wrapping_sub(1);
-            self.keep_draft();
-            self.say("Draft kept.", false);
+        if keep_now {
+            self.keep_draft_now();
         }
     }
 
@@ -652,15 +655,41 @@ impl FarmApp {
                     .on_hover_text("Drafts are kept as you go, too. \u{2318}S / Ctrl+S")
                     .clicked()
                 {
-                    self.kept_changes = self.editor.changes.wrapping_sub(1);
-                    self.keep_draft();
-                    self.say("Draft kept.", false);
+                    self.keep_draft_now();
                 }
                 if let Some(label) = self.host.label() {
                     ui.label(egui::RichText::new(label).small().color(ink.faint));
                 }
             });
         });
+    }
+
+    /// Keep the design on the bench on the owner's own shelf as `name`, and say how that went.
+    /// Whether it was kept.
+    fn keep_preset(&mut self, name: &str) -> bool {
+        let preset = PersonalPreset::new(name, self.editor.design().clone());
+        match self.store.save_preset(&preset) {
+            Ok(()) => {
+                self.mine = self.store.presets();
+                self.say(
+                    format!("Kept \u{201c}{}\u{201d} in My presets.", preset.name),
+                    false,
+                );
+                true
+            }
+            Err(error) => {
+                self.say(format!("Could not keep it: {error}"), true);
+                false
+            }
+        }
+    }
+
+    /// The creature's look changed in Desktop: take `current` as the look shown as before,
+    /// and `revision` as the one the next proposal is made from.
+    fn catch_up(&mut self, current: &Design, revision: &str) {
+        self.editor.arrival = current.clone();
+        self.expected_revision = Some(revision.to_owned());
+        self.pictures.forget_before();
     }
 
     fn dialogs(&mut self, ctx: &egui::Context) {
@@ -680,10 +709,8 @@ impl FarmApp {
                     ui.add_space(8.0);
                     ui.horizontal_wrapped(|ui| {
                         if ui.button("Reopen their look now").clicked() {
-                            self.editor.arrival = current.clone();
+                            self.catch_up(current, revision);
                             self.editor.start_from(current.clone(), None);
-                            self.expected_revision = Some(revision.clone());
-                            self.pictures.forget_before();
                             keep_open = false;
                         }
                         if ui
@@ -691,25 +718,13 @@ impl FarmApp {
                             .on_hover_text("Keep your design, and show theirs as \u{201c}before\u{201d}.")
                             .clicked()
                         {
-                            self.editor.arrival = current.clone();
-                            self.expected_revision = Some(revision.clone());
-                            self.pictures.forget_before();
+                            self.catch_up(current, revision);
                             self.before = true;
                             keep_open = false;
                         }
                         if ui.button("Keep mine as a preset").clicked() {
-                            let preset =
-                                PersonalPreset::new(&self.draft.name, self.editor.design().clone());
-                            match self.store.save_preset(&preset) {
-                                Ok(()) => {
-                                    self.mine = self.store.presets();
-                                    self.say(format!("Kept \u{201c}{}\u{201d} in My presets.", preset.name), false);
-                                }
-                                Err(error) => self.say(format!("Could not keep it: {error}"), true),
-                            }
-                            self.editor.arrival = current.clone();
-                            self.expected_revision = Some(revision.clone());
-                            self.pictures.forget_before();
+                            self.keep_preset(&self.draft.name.clone());
+                            self.catch_up(current, revision);
                             keep_open = false;
                         }
                     });
@@ -727,14 +742,8 @@ impl FarmApp {
                     let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                     ui.horizontal(|ui| {
                         if ui.button("Save").clicked() || enter {
-                            let preset = PersonalPreset::new(&text, self.editor.design().clone());
-                            match self.store.save_preset(&preset) {
-                                Ok(()) => {
-                                    self.mine = self.store.presets();
-                                    self.shelf = Shelf::Mine;
-                                    self.say(format!("Kept \u{201c}{}\u{201d} in My presets.", preset.name), false);
-                                }
-                                Err(error) => self.say(format!("Could not keep it: {error}"), true),
+                            if self.keep_preset(&text) {
+                                self.shelf = Shelf::Mine;
                             }
                             keep_open = false;
                         }

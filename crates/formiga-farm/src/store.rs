@@ -6,6 +6,7 @@
 //! A file that does not check out is set aside under another name, never written over, and Farm
 //! opens without it.
 
+use crate::session::now;
 use formiga_forms::Design;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions, TryLockError};
@@ -104,23 +105,17 @@ pub struct PersonalPreset {
 
 /// A fresh identifier for a draft or preset.
 pub fn new_id() -> String {
-    let mut bytes = [0_u8; 8];
-    if getrandom(&mut bytes).is_err() {
-        let nanos = OffsetDateTime::now_utc().unix_timestamp_nanos();
-        bytes = (nanos as u64).to_le_bytes();
+    // A session id is 16 random bytes from the operating system, as 32 lowercase hex digits;
+    // half of one is plenty here.
+    if let Ok(id) = formiga_travel::SessionId::generate() {
+        return id.as_str()[..16].to_owned();
     }
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn getrandom(bytes: &mut [u8; 8]) -> Result<(), ()> {
-    // A session id is 16 random bytes from the operating system; half of one is plenty here.
-    let id = formiga_travel::SessionId::generate().map_err(|_| ())?;
-    let hex = id.as_str().as_bytes();
-    for (i, byte) in bytes.iter_mut().enumerate() {
-        let pair = std::str::from_utf8(&hex[i * 2..i * 2 + 2]).map_err(|_| ())?;
-        *byte = u8::from_str_radix(pair, 16).map_err(|_| ())?;
-    }
-    Ok(())
+    let nanos = OffsetDateTime::now_utc().unix_timestamp_nanos();
+    (nanos as u64)
+        .to_le_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn is_id(text: &str) -> bool {
@@ -152,9 +147,7 @@ impl Draft {
             design,
             preset,
             for_name,
-            saved_at_utc: OffsetDateTime::now_utc()
-                .replace_nanosecond(0)
-                .unwrap_or(OffsetDateTime::UNIX_EPOCH),
+            saved_at_utc: now(),
         }
     }
 
@@ -180,9 +173,7 @@ impl PersonalPreset {
             id: new_id(),
             name: clean_name(name, "My Formiga"),
             design,
-            saved_at_utc: OffsetDateTime::now_utc()
-                .replace_nanosecond(0)
-                .unwrap_or(OffsetDateTime::UNIX_EPOCH),
+            saved_at_utc: now(),
         }
     }
 
@@ -235,9 +226,7 @@ impl Store {
 
     /// Keep `draft`, whole, stamped with the time.
     pub fn save_draft(&self, draft: &mut Draft) -> std::io::Result<()> {
-        draft.saved_at_utc = OffsetDateTime::now_utc()
-            .replace_nanosecond(0)
-            .unwrap_or(draft.saved_at_utc);
+        draft.saved_at_utc = now();
         write(self.dir(DRAFTS), &draft.id, draft)?;
         // Keep the shelf to its bound: the oldest go first.
         let drafts = self.drafts();
@@ -248,11 +237,7 @@ impl Store {
     }
 
     pub fn delete_draft(&self, id: &str) {
-        if let Some(dir) = self.dir(DRAFTS)
-            && is_id(id)
-        {
-            let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
-        }
+        delete(self.dir(DRAFTS), id);
     }
 
     pub fn save_preset(&self, preset: &PersonalPreset) -> std::io::Result<()> {
@@ -263,11 +248,7 @@ impl Store {
     }
 
     pub fn delete_preset(&self, id: &str) {
-        if let Some(dir) = self.dir(PRESETS)
-            && is_id(id)
-        {
-            let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
-        }
+        delete(self.dir(PRESETS), id);
     }
 }
 
@@ -285,6 +266,16 @@ fn write<T: Serialize>(dir: Option<PathBuf>, id: &str, value: &T) -> std::io::Re
         return Err(std::io::Error::other("too large to keep"));
     }
     formiga_travel::write_atomically(&dir.join(format!("{id}.json")), &bytes)
+}
+
+/// Remove `id`'s file from `dir`. Only an id is ever taken as a file's name, so nothing outside
+/// `dir` can be named.
+fn delete(dir: Option<PathBuf>, id: &str) {
+    if let Some(dir) = dir
+        && is_id(id)
+    {
+        let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
+    }
 }
 
 fn read_all<T: for<'de> Deserialize<'de>>(

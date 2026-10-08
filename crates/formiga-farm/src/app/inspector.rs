@@ -38,15 +38,13 @@ fn row(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui)) {
     });
 }
 
-fn slider_u8(ui: &mut egui::Ui, label: &str, value: &mut u8, low: u8, high: u8) -> bool {
-    let mut changed = false;
-    row(ui, label, |ui| {
-        changed = ui.add(egui::Slider::new(value, low..=high)).changed();
-    });
-    changed
-}
-
-fn slider_i8(ui: &mut egui::Ui, label: &str, value: &mut i8, low: i8, high: i8) -> bool {
+fn slider<N: egui::emath::Numeric>(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &mut N,
+    low: N,
+    high: N,
+) -> bool {
     let mut changed = false;
     row(ui, label, |ui| {
         changed = ui.add(egui::Slider::new(value, low..=high)).changed();
@@ -218,16 +216,16 @@ impl FarmApp {
                 heading(ui, "Proportions");
                 let mut r = *recipe;
                 let mut key = None;
-                if slider_u8(ui, "Width", &mut r.width, 8, 12) {
+                if slider(ui, "Width", &mut r.width, 8, 12) {
                     key = Some("recipe-width");
                 }
-                if slider_u8(ui, "Height", &mut r.height, 7, 11) {
+                if slider(ui, "Height", &mut r.height, 7, 11) {
                     key = Some("recipe-height");
                 }
-                if slider_u8(ui, "Head size", &mut r.head, 7, 9) {
+                if slider(ui, "Head size", &mut r.head, 7, 9) {
                     key = Some("recipe-head");
                 }
-                if slider_u8(ui, "Leg length", &mut r.legs, 3, 6) {
+                if slider(ui, "Leg length", &mut r.legs, 3, 6) {
                     key = Some("recipe-legs");
                 }
                 if let Some(key) = key {
@@ -244,7 +242,7 @@ impl FarmApp {
                         continue;
                     }
                     let mut value = shape.get(dimension);
-                    if slider_u8(ui, dimension.label(), &mut value, 0, STEPS) {
+                    if slider(ui, dimension.label(), &mut value, 0, STEPS) {
                         shape.set(dimension, value);
                         changed = Some(dimension);
                     }
@@ -316,7 +314,7 @@ impl FarmApp {
                     };
                     let mut p = part;
                     let mut key = None;
-                    if slider_u8(ui, "Size", &mut p.size, 0, STEPS) {
+                    if slider(ui, "Size", &mut p.size, 0, STEPS) {
                         key = Some("size");
                     }
                     let inks: Vec<(Ink, &str)> = Ink::ALL.iter().map(|i| (*i, i.label())).collect();
@@ -326,14 +324,14 @@ impl FarmApp {
                     egui::CollapsingHeader::new("Placement")
                         .id_salt(("placement", slot))
                         .show(ui, |ui| {
-                            if slider_i8(ui, "Tilt", &mut p.tilt, -NUDGE, NUDGE) {
+                            if slider(ui, "Tilt", &mut p.tilt, -NUDGE, NUDGE) {
                                 key = Some("tilt");
                             }
-                            if slider_i8(ui, "Lift", &mut p.lift, -NUDGE, NUDGE) {
+                            if slider(ui, "Lift", &mut p.lift, -NUDGE, NUDGE) {
                                 key = Some("lift");
                             }
                             if slot.paired() {
-                                if slider_i8(ui, "Uneven", &mut p.uneven, -NUDGE, NUDGE) {
+                                if slider(ui, "Uneven", &mut p.uneven, -NUDGE, NUDGE) {
                                     key = Some("uneven");
                                 }
                                 if p.uneven != 0 && ui.small_button("Restore symmetry").clicked() {
@@ -377,7 +375,7 @@ impl FarmApp {
         if choose(ui, "Ears", "recipe-ears", &mut r.ears, &ears) {
             key = Some("ears");
         }
-        if slider_u8(ui, "Ear size", &mut r.ear_size, 3, 7) {
+        if slider(ui, "Ear size", &mut r.ear_size, 3, 7) {
             key = Some("ear-size");
         }
         if choose(
@@ -586,7 +584,7 @@ impl FarmApp {
         if color(ui, "Eyes", &mut coat.eyes) {
             key = Some("eyes");
         }
-        if slider_u8(ui, "Underside reach", &mut coat.underside_reach, 0, STEPS) {
+        if slider(ui, "Underside reach", &mut coat.underside_reach, 0, STEPS) {
             key = Some("reach");
         }
         if let Some(key) = key {
@@ -623,13 +621,13 @@ impl FarmApp {
                     if color(ui, "Colour", &mut marking.color) {
                         key = Some(format!("marking-{index}-color"));
                     }
-                    if slider_u8(ui, "Amount", &mut marking.amount, 0, STEPS) {
+                    if slider(ui, "Amount", &mut marking.amount, 0, STEPS) {
                         key = Some(format!("marking-{index}-amount"));
                     }
-                    if slider_u8(ui, "Size", &mut marking.size, 0, STEPS) {
+                    if slider(ui, "Size", &mut marking.size, 0, STEPS) {
                         key = Some(format!("marking-{index}-size"));
                     }
-                    if slider_u8(ui, "Layout", &mut marking.layout, 0, 255) {
+                    if slider(ui, "Layout", &mut marking.layout, 0, 255) {
                         key = Some(format!("marking-{index}-layout"));
                     }
                     if ui.small_button("Remove").clicked() {
@@ -671,7 +669,7 @@ impl FarmApp {
         match &design.form {
             Form::Sculpted { sculpt } => {
                 let mut template = sculpt.face_template;
-                if slider_u8(
+                if slider(
                     ui,
                     "Face layout",
                     &mut template,
@@ -688,7 +686,7 @@ impl FarmApp {
             Form::Companion { recipe } => {
                 let mut r = *recipe;
                 if r.archetype > 0 {
-                    if slider_u8(
+                    if slider(
                         ui,
                         "Face layout",
                         &mut r.face_template,
@@ -737,13 +735,13 @@ impl FarmApp {
         ) {
             key = Some("eye-shape");
         }
-        if slider_u8(ui, "Eye size", &mut face.eye_size, 1, 2) {
+        if slider(ui, "Eye size", &mut face.eye_size, 1, 2) {
             key = Some("eye-size");
         }
-        if slider_u8(ui, "Eye spacing", &mut face.eye_spacing, 4, 7) {
+        if slider(ui, "Eye spacing", &mut face.eye_spacing, 4, 7) {
             key = Some("eye-spacing");
         }
-        if slider_i8(ui, "Eye height", &mut face.vertical_offset, -1, 1) {
+        if slider(ui, "Eye height", &mut face.vertical_offset, -1, 1) {
             key = Some("eye-height");
         }
         if choose(
