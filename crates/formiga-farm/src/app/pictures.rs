@@ -47,7 +47,6 @@ pub struct Pictures {
 
 impl Pictures {
     /// One frame of `design`, drawn if it has not been already.
-    #[allow(clippy::too_many_arguments)]
     pub fn frame(
         &mut self,
         ctx: &egui::Context,
