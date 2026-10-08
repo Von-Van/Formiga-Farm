@@ -237,11 +237,7 @@ impl Store {
     }
 
     pub fn delete_draft(&self, id: &str) {
-        if let Some(dir) = self.dir(DRAFTS)
-            && is_id(id)
-        {
-            let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
-        }
+        delete(self.dir(DRAFTS), id);
     }
 
     pub fn save_preset(&self, preset: &PersonalPreset) -> std::io::Result<()> {
@@ -252,11 +248,7 @@ impl Store {
     }
 
     pub fn delete_preset(&self, id: &str) {
-        if let Some(dir) = self.dir(PRESETS)
-            && is_id(id)
-        {
-            let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
-        }
+        delete(self.dir(PRESETS), id);
     }
 }
 
@@ -274,6 +266,16 @@ fn write<T: Serialize>(dir: Option<PathBuf>, id: &str, value: &T) -> std::io::Re
         return Err(std::io::Error::other("too large to keep"));
     }
     formiga_travel::write_atomically(&dir.join(format!("{id}.json")), &bytes)
+}
+
+/// Remove `id`'s file from `dir`. Only an id is ever taken as a file's name, so nothing outside
+/// `dir` can be named.
+fn delete(dir: Option<PathBuf>, id: &str) {
+    if let Some(dir) = dir
+        && is_id(id)
+    {
+        let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
+    }
 }
 
 fn read_all<T: for<'de> Deserialize<'de>>(
