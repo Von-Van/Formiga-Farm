@@ -104,23 +104,17 @@ pub struct PersonalPreset {
 
 /// A fresh identifier for a draft or preset.
 pub fn new_id() -> String {
-    let mut bytes = [0_u8; 8];
-    if getrandom(&mut bytes).is_err() {
-        let nanos = OffsetDateTime::now_utc().unix_timestamp_nanos();
-        bytes = (nanos as u64).to_le_bytes();
+    // A session id is 16 random bytes from the operating system, as 32 lowercase hex digits;
+    // half of one is plenty here.
+    if let Ok(id) = formiga_travel::SessionId::generate() {
+        return id.as_str()[..16].to_owned();
     }
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn getrandom(bytes: &mut [u8; 8]) -> Result<(), ()> {
-    // A session id is 16 random bytes from the operating system; half of one is plenty here.
-    let id = formiga_travel::SessionId::generate().map_err(|_| ())?;
-    let hex = id.as_str().as_bytes();
-    for (i, byte) in bytes.iter_mut().enumerate() {
-        let pair = std::str::from_utf8(&hex[i * 2..i * 2 + 2]).map_err(|_| ())?;
-        *byte = u8::from_str_radix(pair, 16).map_err(|_| ())?;
-    }
-    Ok(())
+    let nanos = OffsetDateTime::now_utc().unix_timestamp_nanos();
+    (nanos as u64)
+        .to_le_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn is_id(text: &str) -> bool {
