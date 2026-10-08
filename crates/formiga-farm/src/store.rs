@@ -6,6 +6,7 @@
 //! A file that does not check out is set aside under another name, never written over, and Farm
 //! opens without it.
 
+use crate::session::now;
 use formiga_forms::Design;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions, TryLockError};
@@ -146,9 +147,7 @@ impl Draft {
             design,
             preset,
             for_name,
-            saved_at_utc: OffsetDateTime::now_utc()
-                .replace_nanosecond(0)
-                .unwrap_or(OffsetDateTime::UNIX_EPOCH),
+            saved_at_utc: now(),
         }
     }
 
@@ -174,9 +173,7 @@ impl PersonalPreset {
             id: new_id(),
             name: clean_name(name, "My Formiga"),
             design,
-            saved_at_utc: OffsetDateTime::now_utc()
-                .replace_nanosecond(0)
-                .unwrap_or(OffsetDateTime::UNIX_EPOCH),
+            saved_at_utc: now(),
         }
     }
 
@@ -229,9 +226,7 @@ impl Store {
 
     /// Keep `draft`, whole, stamped with the time.
     pub fn save_draft(&self, draft: &mut Draft) -> std::io::Result<()> {
-        draft.saved_at_utc = OffsetDateTime::now_utc()
-            .replace_nanosecond(0)
-            .unwrap_or(draft.saved_at_utc);
+        draft.saved_at_utc = now();
         write(self.dir(DRAFTS), &draft.id, draft)?;
         // Keep the shelf to its bound: the oldest go first.
         let drafts = self.drafts();

@@ -184,7 +184,8 @@ impl Host {
     }
 }
 
-fn now() -> OffsetDateTime {
+/// The time now, to the whole second: what Farm stamps its documents, drafts and presets with.
+pub fn now() -> OffsetDateTime {
     let now = OffsetDateTime::now_utc();
     now.replace_nanosecond(0).unwrap_or(now)
 }
