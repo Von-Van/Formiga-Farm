@@ -277,24 +277,17 @@ fn main() -> Result<()> {
             if busy {
                 bail!("Formiga Farm is already open");
             }
-            let (colony, index, label) = match source {
-                Source::SampleEdit(index) => (
-                    session::colony_from(None)?,
-                    Some(index),
-                    "Rehearsing with Desktop's sample colony".to_owned(),
-                ),
-                Source::Save(path, index) => (
-                    session::colony_from(Some(&path))?,
-                    index,
-                    "Rehearsing with a colony file, read only".to_owned(),
-                ),
-                _ => (
-                    session::colony_from(None)?,
-                    None,
-                    "Rehearsing with Desktop's sample colony".to_owned(),
-                ),
+            let (save, index) = match source {
+                Source::Save(path, index) => (Some(path), index),
+                Source::SampleEdit(index) => (None, Some(index)),
+                Source::Sample | Source::Session(_) => (None, None),
             };
-            let (rehearsal, snapshot) = Rehearsal::open(colony, index, label)?;
+            let label = match save {
+                Some(_) => "Rehearsing with a colony file, read only",
+                None => "Rehearsing with Desktop's sample colony",
+            };
+            let colony = session::colony_from(save.as_deref())?;
+            let (rehearsal, snapshot) = Rehearsal::open(colony, index, label.to_owned())?;
             (Host::Rehearsal(Box::new(rehearsal)), snapshot)
         }
     };
