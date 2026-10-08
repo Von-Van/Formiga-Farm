@@ -167,17 +167,6 @@ fn picture_of(design: &Design, scale: i32) -> (Canvas, i32) {
 }
 
 pub fn write_png(canvas: &Canvas, path: &Path) -> Result<()> {
-    let file = std::fs::File::create(path)
-        .with_context(|| format!("could not write {}", path.display()))?;
-    let mut encoder = png::Encoder::new(
-        std::io::BufWriter::new(file),
-        canvas.width(),
-        canvas.height(),
-    );
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    encoder
-        .write_header()?
-        .write_image_data(&canvas.rgba_bytes())?;
-    Ok(())
+    std::fs::write(path, crate::icon::png(canvas))
+        .with_context(|| format!("could not write {}", path.display()))
 }
