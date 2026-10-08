@@ -315,7 +315,7 @@ fn main() -> Result<()> {
     };
     let store = store::Store::new(data.clone());
     let place = data.as_deref().and_then(store::WindowPlace::load);
-    let text_scale = f32::from(snapshot.presentation.text_scale_percent.clamp(100, 150)) / 100.0;
+    let text_scale = app::style::text_scale(&snapshot.presentation);
     let mut viewport = eframe::egui::ViewportBuilder::default()
         .with_title(title)
         .with_inner_size(place.map_or([1240.0 * text_scale.min(1.2), 800.0], |p| {

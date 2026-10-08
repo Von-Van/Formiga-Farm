@@ -168,9 +168,7 @@ impl FarmApp {
             start,
         } = opening;
         let base = snapshot.base_genome()?;
-        let text_scale =
-            f32::from(snapshot.presentation.text_scale_percent.clamp(100, 150)) / 100.0;
-        style::apply(ctx, text_scale);
+        style::apply(ctx, style::text_scale(&snapshot.presentation));
         match snapshot.presentation.theme {
             formiga_travel::Theme::Light => ctx.set_theme(egui::ThemePreference::Light),
             formiga_travel::Theme::Dark => ctx.set_theme(egui::ThemePreference::Dark),

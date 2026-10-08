@@ -47,6 +47,11 @@ pub fn ink(dark: bool) -> Ink {
     }
 }
 
+/// How much larger than usual Desktop's owner reads text, from 1 to 1.5.
+pub fn text_scale(presentation: &formiga_farm_contract::Presentation) -> f32 {
+    f32::from(presentation.text_scale_percent.clamp(100, 150)) / 100.0
+}
+
 /// Set Farm's style on both themes, at `text_scale` (1 to 1.5).
 pub fn apply(ctx: &egui::Context, text_scale: f32) {
     for (theme, dark) in [(egui::Theme::Light, false), (egui::Theme::Dark, true)] {
