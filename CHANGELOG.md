@@ -15,6 +15,10 @@ decides whether to keep it, and it never changes a creature's name, nature, frie
   clipboard as one line of text, and **From a design code** starts from one someone sends you. A
   code holds only a look and its name, never anyone in the colony, and Farm refuses any code it
   cannot read exactly rather than guessing.
+- A red fox joins the animals: orange, with a white muzzle, dark socks and a big brush held up
+  behind it. A plume tail in the coat's own colour now ends in a pale tip, as a fox's does.
+- Four-legged bodies show four feet. Each paw is drawn as part of its leg, inside the leg's
+  outline, where before a separate oval over the end of each leg made them look like more.
 - The coat's underside slider is called **Belly reach**, so its name fits beside it.
 - Farm comes as a universal Mac app, in a disk image and a zip, and for Windows as an installer and
   a portable zip, each with a checksum. Once installed, Formiga Desktop finds Farm on its own.

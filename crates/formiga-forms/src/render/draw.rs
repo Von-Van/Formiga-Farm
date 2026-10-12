@@ -1018,6 +1018,18 @@ impl Painter<'_> {
                     true,
                     false,
                 );
+                // A brush in the coat's own colour ends in a pale tip, as a fox's does.
+                if part.ink == Ink::Primary {
+                    let tip = (end.0 - cos * 0.6 * k, end.1 - sin * 0.6 * k);
+                    self.region(
+                        &[Shape::ellipse(tip.0, tip.1, 2.1 * k, 2.1 * k)],
+                        Region::Tail,
+                        Frame::along(root, end, 2.6 * k),
+                        self.inks.underside,
+                        true,
+                        false,
+                    );
+                }
             }
             PartKind::TailFluffy => {
                 let mid = (along(0.55).0 - 1.5, along(0.55).1 + 2.0);

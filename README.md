@@ -17,7 +17,7 @@ creature stands large and alive while you change it.
   sculpted ones: compact, large and tall four-legged bodies, an upright body with arms, a floater,
   a crawler and a percher. A whale hovers and bobs rather than walking on legs it does not have;
   a turtle paddles; an eagle hops.
-- **Twenty animals to start from.** A giant panda, both elephants, a tiger, a lion, a polar bear,
+- **Twenty-one animals to start from.** A giant panda, a red fox, both elephants, a tiger, a lion, a polar bear,
   a gray wolf, a humpback whale, a blue whale, a dolphin, an orca, a gorilla, a chimpanzee, an
   orangutan, a rhinoceros, a giraffe, a snow leopard, a sea turtle, a bald eagle and a koala,
   each a Formiga's idea of the animal. They are only starting points: a panda can grow horns, a
@@ -69,7 +69,7 @@ would. What a rehearsal keeps lasts as long as the window.
 | The design model and the drawing of sculpted forms (`formiga-forms`) | Draft, kept here until Desktop adopts it into `formiga-core` and `formiga-art` |
 | The design contract (`formiga-farm-contract`) | Draft, kept here until Desktop adopts it |
 | Seven sculpted body plans, every Desktop clip on each | Preview |
-| Twenty animal presets, seven body forms, Desktop's five companion bodies | Preview |
+| Twenty-one animal presets, seven body forms, Desktop's five companion bodies | Preview |
 | The editor: four layers, undo, layer rolls and resets, before and after | Preview |
 | Finer drawing of sculpted forms, starting from a picture | Preview |
 | Drafts, personal presets, crash recovery | Preview |
