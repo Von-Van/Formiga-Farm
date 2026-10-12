@@ -11,6 +11,7 @@ mod paint;
 mod presets;
 mod review;
 mod session;
+mod share;
 mod store;
 
 use anyhow::{Context, Result, bail};
@@ -42,6 +43,8 @@ For review, without a window:
 For review, of the window itself:
   --snap <PNG>             Open the window, and after --at seconds (3 if not given) save a
                            picture of it and close
+  --apply-at <SECONDS>     Apply the design on the workbench after that many seconds, as the
+                           Apply button does; with --snap, take the picture after Desktop answers
   --layer <form|parts|finish|face>  --intent <idle|move|...>  --view <stage|desktop|home|hill>
   --shelf <animals|forms|mine|drafts>  --theme <light|dark>
   --picture <IMAGE>        Open reading a picture, as From a picture does
@@ -61,6 +64,7 @@ struct Args {
     source: Source,
     preset: Option<String>,
     snap: Option<PathBuf>,
+    apply_at: Option<f64>,
     picture: Option<PathBuf>,
     at: f64,
     layer: Option<Layer>,
@@ -75,6 +79,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Args>> {
         source: Source::Sample,
         preset: None,
         snap: None,
+        apply_at: None,
         picture: None,
         at: 3.0,
         layer: None,
@@ -112,6 +117,13 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Args>> {
             }
             "--preset" => parsed.preset = Some(value("--preset")?),
             "--snap" => parsed.snap = Some(PathBuf::from(value("--snap")?)),
+            "--apply-at" => {
+                parsed.apply_at = Some(
+                    value("--apply-at")?
+                        .parse()
+                        .context("--apply-at is a number of seconds")?,
+                )
+            }
             "--picture" => parsed.picture = Some(PathBuf::from(value("--picture")?)),
             "--at" => {
                 parsed.at = value("--at")?
@@ -349,6 +361,9 @@ fn main() -> Result<()> {
             }
             if let Some(path) = args.picture {
                 app.read_picture(path);
+            }
+            if let Some(at) = args.apply_at {
+                app.apply_at(at);
             }
             if let Some(path) = args.snap {
                 app.snap(path, args.at);

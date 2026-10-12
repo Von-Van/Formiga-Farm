@@ -16,10 +16,10 @@ publish = false
 [workspace.dependencies]
 # Formiga Desktop's shared crates, all four from the same Desktop release so their types agree.
 # Move all four to a new release's tag together.
-formiga-art = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.3" }
-formiga-core = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.3" }
-formiga-expansion-rulebook = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.3" }
-formiga-travel = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.3" }
+formiga-art = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.5" }
+formiga-core = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.5" }
+formiga-expansion-rulebook = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.5" }
+formiga-travel = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.67.5" }
 
 formiga-farm-contract = { path = "crates/formiga-farm-contract" }
 formiga-forms = { path = "crates/formiga-forms" }
@@ -27,6 +27,7 @@ formiga-forms = { path = "crates/formiga-forms" }
 anyhow = "1.0.104"
 directories = "5.0.1"
 eframe = "0.36.2"
+base64 = "0.22.1"
 image = { version = "0.25.10", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 png = "0.18.1"
 rfd = "0.17.2"
