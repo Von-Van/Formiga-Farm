@@ -59,8 +59,8 @@ The agreement between the two apps is written up in [docs/CONTRACT.md](docs/CONT
 
 ## Where things stand
 
-Farm is a preview. Desktop does not yet open Farm from its Journal, so for now Farm runs in
-**rehearsal**: it opens Desktop's own sample colony, or a real colony file read-only, and plays
+Farm is a preview. Formiga Desktop 0.67.6 opens it from a companion's notebook page or the
+studio. Opened on its own, Farm runs in **rehearsal**: it opens Desktop's own sample colony, or a real colony file read-only, and plays
 Desktop's part with the contract's own rules, so a rehearsal proves the same loop a real session
 would. What a rehearsal keeps lasts as long as the window.
 
@@ -74,7 +74,7 @@ would. What a rehearsal keeps lasts as long as the window.
 | Finer drawing of sculpted forms, starting from a picture | Preview |
 | Drafts, personal presets, crash recovery | Preview |
 | Previews on the desktop, in Home and on the Hill | Preview |
-| Opening Farm from Desktop's Journal | Not yet in a Desktop release |
+| Opening Farm from Desktop's notebook and studio | Formiga Desktop 0.67.6 |
 | Packaging for macOS | A universal `Formiga Farm.app` with the bundle id and Farm version Desktop looks for, a zip and a disk image, each with its checksum. Not yet run on a Mac |
 | Packaging for Windows | A per-user installer that writes the registry values Desktop reads, and a portable zip, each with its checksum. Not yet run on Windows |
 
