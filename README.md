@@ -122,7 +122,7 @@ it. Deleting a draft or preset never changes anyone in the colony.
 
 ## Building
 
-Rust 1.97.1. The shared crates come from Formiga Desktop by one release tag, `v0.67.3`. The gate
+Rust 1.97.1. The shared crates come from Formiga Desktop by one release tag, `v0.67.5`. The gate
 CI runs on macOS and Windows:
 
 ```bash
