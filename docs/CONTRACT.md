@@ -68,11 +68,11 @@ The design model has its own version, `formiga_forms::DESIGN_VERSION` (1).
 
 ## A session, file by file
 
-Desktop opens a session from its Journal, either on one creature ("Edit in Farm") or on nothing
-("Create a Formiga"). It writes a fresh session directory and starts Farm as
-`formiga-farm --formiga-farm <absolute session directory>`, with nothing else. From then on the
-two apps talk only through files in that directory, each written whole under a temporary name
-and renamed into place:
+Desktop opens a session either on one creature, from its page in the notebook ("Reshape in
+Formiga Farm"), or on nothing, from the studio ("Draw one in Formiga Farm"). It writes a fresh
+session directory and starts Farm as `formiga-farm --formiga-farm <absolute session directory>`,
+with nothing else. From then on the two apps talk only through files in that directory, each
+written whole under a temporary name and renamed into place:
 
 | File | Written by | What it is |
 | --- | --- | --- |
