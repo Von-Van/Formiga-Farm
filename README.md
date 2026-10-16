@@ -11,13 +11,15 @@ its soil, with tunnels and seed stores and a few tiny ants going about their bus
 everything. The ant farm is only scenery. The work happens on the stage in the middle, where the
 creature stands large and alive while you change it.
 
+![Every preset Farm starts from, each at rest and mid-step: Desktop's companion bodies, then the animals from a panda and a red fox to whales, turtles and an eagle](docs/assets/presets.png)
+
 ## What it offers
 
 - **Real body plans, not paint jobs.** Besides Desktop's five companion bodies there are seven
   sculpted ones: compact, large and tall four-legged bodies, an upright body with arms, a floater,
   a crawler and a percher. A whale hovers and bobs rather than walking on legs it does not have;
   a turtle paddles; an eagle hops.
-- **Twenty animals to start from.** A giant panda, both elephants, a tiger, a lion, a polar bear,
+- **Twenty-one animals to start from.** A giant panda, a red fox, both elephants, a tiger, a lion, a polar bear,
   a gray wolf, a humpback whale, a blue whale, a dolphin, an orca, a gorilla, a chimpanzee, an
   orangutan, a rhinoceros, a giraffe, a snow leopard, a sea turtle, a bald eagle and a koala,
   each a Formiga's idea of the animal. They are only starting points: a panda can grow horns, a
@@ -59,8 +61,8 @@ The agreement between the two apps is written up in [docs/CONTRACT.md](docs/CONT
 
 ## Where things stand
 
-Farm is a preview. Desktop does not yet open Farm from its Journal, so for now Farm runs in
-**rehearsal**: it opens Desktop's own sample colony, or a real colony file read-only, and plays
+Farm is a preview. Formiga Desktop 0.67.6 opens it from a companion's notebook page or the
+studio. Opened on its own, Farm runs in **rehearsal**: it opens Desktop's own sample colony, or a real colony file read-only, and plays
 Desktop's part with the contract's own rules, so a rehearsal proves the same loop a real session
 would. What a rehearsal keeps lasts as long as the window.
 
@@ -69,12 +71,12 @@ would. What a rehearsal keeps lasts as long as the window.
 | The design model and the drawing of sculpted forms (`formiga-forms`) | Draft, kept here until Desktop adopts it into `formiga-core` and `formiga-art` |
 | The design contract (`formiga-farm-contract`) | Draft, kept here until Desktop adopts it |
 | Seven sculpted body plans, every Desktop clip on each | Preview |
-| Twenty animal presets, seven body forms, Desktop's five companion bodies | Preview |
+| Twenty-one animal presets, seven body forms, Desktop's five companion bodies | Preview |
 | The editor: four layers, undo, layer rolls and resets, before and after | Preview |
 | Finer drawing of sculpted forms, starting from a picture | Preview |
 | Drafts, personal presets, crash recovery | Preview |
 | Previews on the desktop, in Home and on the Hill | Preview |
-| Opening Farm from Desktop's Journal | Not yet in a Desktop release |
+| Opening Farm from Desktop's notebook and studio | Formiga Desktop 0.67.6 |
 | Packaging for macOS | A universal `Formiga Farm.app` with the bundle id and Farm version Desktop looks for, a zip and a disk image, each with its checksum. Not yet run on a Mac |
 | Packaging for Windows | A per-user installer that writes the registry values Desktop reads, and a portable zip, each with its checksum. Not yet run on Windows |
 
@@ -97,7 +99,8 @@ cargo run --release -p formiga-farm -- --from-save "path/to/colony.json" --creat
 `--preset animal.giant_panda` opens on a preset, and `--picture cat.png` opens reading a
 picture. `--help` lists everything, including the review pictures drawn without a window
 (`--render-presets`, `--render-poses`, `--render-habitat`, and `--import` for what a picture is
-read as). `--pixels` draws the presets and poses at Desktop's companion size instead.
+read as). `--pixels` draws the presets and poses at Desktop's companion size instead. The picture at the top
+of this page is `--render-presets docs/assets/presets.png`.
 
 Keys: ⌘Z or Ctrl+Z undoes and adding Shift redoes; ⌘S or Ctrl+S keeps the draft; B shows before
 and after; F turns round; 1 to 8 choose a pose.
@@ -122,7 +125,7 @@ it. Deleting a draft or preset never changes anyone in the colony.
 
 ## Building
 
-Rust 1.97.1. The shared crates come from Formiga Desktop by one release tag, `v0.67.3`. The gate
+Rust 1.97.1. The shared crates come from Formiga Desktop by one release tag, `v0.67.5`. The gate
 CI runs on macOS and Windows:
 
 ```bash
@@ -145,3 +148,8 @@ same way without publishing anything. Both sign when `FORMIGA_CODESIGN_IDENTITY`
 `FORMIGA_NOTARY_PROFILE`) or `FORMIGA_SIGNTOOL_CERT_SHA1` is set, and otherwise ship unsigned.
 `scripts/set-version.sh <version> [<desktop tag>]` writes a new version, or a new Desktop tag,
 everywhere it is named; `--check` says whether every place agrees.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Formiga Farm is a personal project and does not take outside pull
+requests, but forks are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) says how to make your own.

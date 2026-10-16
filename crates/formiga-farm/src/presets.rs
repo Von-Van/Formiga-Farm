@@ -1,4 +1,4 @@
-//! The starting points that come with Farm: a blank form, every body plan, and twenty animals,
+//! The starting points that come with Farm: a blank form, every body plan, and twenty-one animals,
 //! each a Formiga's idea of the animal rather than the animal itself. A preset is only ever
 //! where a design starts; it carries no trait, no rarity and no advantage, and nothing about a
 //! creature remembers which one it began as except the design's own lineage note.
@@ -237,7 +237,7 @@ fn mark(kind: MarkingKind, color: [u8; 3], amount: u8, size: u8) -> Marking {
 const EYES: [u8; 3] = [0x20, 0x1b, 0x29];
 const BLUSH: [u8; 3] = [0xee, 0x9a, 0xa0];
 
-/// The twenty animals. Their order is the order they are listed in.
+/// The twenty-one animals. Their order is the order they are listed in.
 pub fn animals() -> Vec<Preset> {
     use Ink::*;
     use MarkingKind as M;
@@ -426,12 +426,41 @@ pub fn animals() -> Vec<Preset> {
             parts: vec![
                 part(K::EarsPointed, Primary, 6),
                 part(K::SnoutLong, Underside, 5),
-                part(K::TailPlume, Primary, 6),
+                part(K::TailFluffy, Primary, 6),
                 part(K::FeetPaws, Primary, 5),
             ],
             markings: vec![mark(M::Saddle, [0x6a, 0x6a, 0x74], 5, 5)],
             face_template: 4,
             face: face(EyeShape::Round, 2, 5, MouthStyle::Smile, CheekStyle::None),
+        },
+        Animal {
+            id: "animal.red_fox",
+            name: "Red fox",
+            plan: P::CompactQuadruped,
+            shape: [8, 4, 6, 2, 3, 5, 6, 7],
+            treatment: T::Fur,
+            colors: [
+                [0xf2, 0x8e, 0x2c],
+                [0x5a, 0x50, 0x56],
+                [0xfa, 0xf6, 0xf0],
+                [0xfa, 0xf6, 0xf0],
+                [0x5a, 0x50, 0x56],
+                EYES,
+            ],
+            underside_reach: 4,
+            parts: vec![
+                part(K::EarsPointed, Primary, 7),
+                part(K::SnoutMuzzle, Underside, 4),
+                // A brush held up behind it.
+                Part {
+                    tilt: 3,
+                    ..part(K::TailPlume, Primary, 8)
+                },
+                part(K::FeetPaws, Primary, 5),
+            ],
+            markings: vec![mark(M::Socks, [0x5a, 0x50, 0x56], 5, 5)],
+            face_template: 1,
+            face: face(EyeShape::Tall, 1, 6, MouthStyle::Cat, CheekStyle::Blush),
         },
         Animal {
             id: "animal.humpback_whale",
@@ -768,9 +797,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn there_are_twenty_animals_each_named_once_and_each_a_valid_design() {
+    fn there_are_twenty_one_animals_each_named_once_and_each_a_valid_design() {
         let animals = animals();
-        assert_eq!(animals.len(), 20);
+        assert_eq!(animals.len(), 21);
         let mut ids = std::collections::HashSet::new();
         for preset in all() {
             assert!(ids.insert(preset.id), "{} twice", preset.id);

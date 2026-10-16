@@ -88,6 +88,8 @@ enum Dialog {
     Recalled,
     /// A picture being read.
     Reading { name: String },
+    /// A design code being pasted, and why the last one could not be read.
+    Code { text: String, error: Option<String> },
     /// What a picture was read as, to start from.
     Takes {
         name: String,
@@ -145,6 +147,8 @@ pub struct FarmApp {
     inspector_open: bool,
     place: Option<WindowPlace>,
     snap: Option<(PathBuf, f64, bool)>,
+    /// For review only: when to apply the design on the workbench by itself.
+    apply_at: Option<f64>,
     left: bool,
 }
 
@@ -239,6 +243,7 @@ impl FarmApp {
             inspector_open: true,
             place,
             snap: None,
+            apply_at: None,
             left: false,
         })
     }
@@ -246,6 +251,20 @@ impl FarmApp {
     /// For review only: after `at` seconds save a picture of the window to `path`, and close.
     pub fn snap(&mut self, path: PathBuf, at: f64) {
         self.snap = Some((path, at, false));
+    }
+
+    /// For review only: after `at` seconds apply the design on the workbench, as the Apply
+    /// button does, so a whole session with Desktop can be run without a hand on the mouse. A
+    /// picture asked for is held until Desktop has answered.
+    pub fn apply_at(&mut self, at: f64) {
+        self.apply_at = Some(at);
+    }
+
+    fn apply_when_due(&mut self) {
+        if self.apply_at.is_some_and(|at| self.clock >= at) {
+            self.apply_at = None;
+            self.apply();
+        }
     }
 
     /// For review only: open on a layer, a pose or a view.
@@ -641,6 +660,20 @@ impl FarmApp {
                 if response.clicked() {
                     self.apply();
                 }
+                let shareable = crate::share::shareable(self.editor.design());
+                let copy = ui.add_enabled(shareable, egui::Button::new("Copy code"));
+                let copy = if shareable {
+                    copy.on_hover_text(
+                        "Copy this look as a design code, to send to someone or keep. Paste it into Farm to start from it.",
+                    )
+                } else {
+                    copy.on_disabled_hover_text(
+                        "This look comes from their own genes. Change it a little, and it has a code.",
+                    )
+                };
+                if copy.clicked() {
+                    self.copy_code(ui.ctx());
+                }
                 if ui
                     .button("Save as preset\u{2026}")
                     .on_hover_text("Keep this design on your own shelf, to start from again.")
@@ -662,6 +695,36 @@ impl FarmApp {
                 }
             });
         });
+    }
+
+    /// Put the design on the bench on the clipboard as a design code, and say so.
+    fn copy_code(&mut self, ctx: &egui::Context) {
+        match crate::share::encode(self.editor.design(), &self.draft.name) {
+            Ok(code) => {
+                ctx.copy_text(code);
+                self.say(
+                    "Design code copied. Paste it into Farm, with From a design code, to start from this look.",
+                    false,
+                );
+            }
+            Err(error) => self.say(format!("{error:#}"), true),
+        }
+    }
+
+    /// Start from the look in a design code, as from a preset: the draft on the bench is kept
+    /// first, and the new one is named as the code names it. Whether the code was read.
+    fn start_from_code(&mut self, text: &str) -> Result<(), String> {
+        let shared = crate::share::decode(text).map_err(|error| format!("{error:#}"))?;
+        self.keep_draft();
+        self.editor.start_from(shared.design, None);
+        self.draft.name = shared.name.clone();
+        self.kept_changes = self.kept_changes.wrapping_sub(1);
+        self.changed_at = self.clock;
+        self.say(
+            format!("Started from \u{201c}{}\u{201d}.", shared.name),
+            false,
+        );
+        Ok(())
     }
 
     /// Keep the design on the bench on the owner's own shelf as `name`, and say how that went.
@@ -728,6 +791,43 @@ impl FarmApp {
                             keep_open = false;
                         }
                     });
+                }
+                Dialog::Code { text, error } => {
+                    ui.heading("Start from a design code");
+                    ui.label("Paste a code copied from Farm. It holds only a look; nobody in the colony changes until you apply it.");
+                    let mut text = text.clone();
+                    let mut error = error.clone();
+                    let edit = ui.add(
+                        egui::TextEdit::multiline(&mut text)
+                            .desired_rows(4)
+                            .desired_width(f32::INFINITY)
+                            .char_limit(crate::share::MAX_CODE_CHARS)
+                            .hint_text(crate::share::PREFIX),
+                    );
+                    if edit.changed() {
+                        error = None;
+                    }
+                    if let Some(error) = &error {
+                        let ink = style::ink(ui.visuals().dark_mode);
+                        ui.label(egui::RichText::new(error).color(ink.block));
+                    }
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(!text.trim().is_empty(), egui::Button::new("Start from it"))
+                            .clicked()
+                        {
+                            match self.start_from_code(&text) {
+                                Ok(()) => keep_open = false,
+                                Err(why) => error = Some(why),
+                            }
+                        }
+                        if ui.button("Cancel").clicked() {
+                            keep_open = false;
+                        }
+                    });
+                    if keep_open {
+                        self.dialog = Some(Dialog::Code { text, error });
+                    }
                 }
                 Dialog::SavePreset { name } => {
                     ui.heading("Save as a preset");
@@ -919,7 +1019,10 @@ impl eframe::App for FarmApp {
                 self.toast(ui, rect);
             });
         self.dialogs(&ctx);
-        self.take_snap(&ctx);
+        self.apply_when_due();
+        if self.apply_at.is_none() && self.pending.is_none() {
+            self.take_snap(&ctx);
+        }
         let fps = if self.reduce_motion() { 4 } else { 30 };
         ctx.request_repaint_after(std::time::Duration::from_millis(1000 / fps));
     }

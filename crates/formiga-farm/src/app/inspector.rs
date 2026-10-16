@@ -584,7 +584,7 @@ impl FarmApp {
         if color(ui, "Eyes", &mut coat.eyes) {
             key = Some("eyes");
         }
-        if slider(ui, "Underside reach", &mut coat.underside_reach, 0, STEPS) {
+        if slider(ui, "Belly reach", &mut coat.underside_reach, 0, STEPS) {
             key = Some("reach");
         }
         if let Some(key) = key {

@@ -424,6 +424,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "bit-set"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1057,7 +1063,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1192,12 +1198,13 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.67.3"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
+version = "0.67.5"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.5#f5173a9d418ef11b9489720c11fc253cd5e13dcb"
 dependencies = [
  "epaint",
  "formiga-core",
  "gif 0.13.3",
+ "png",
  "rand",
  "rand_chacha",
  "time",
@@ -1205,8 +1212,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.67.3"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
+version = "0.67.5"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.5#f5173a9d418ef11b9489720c11fc253cd5e13dcb"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1221,8 +1228,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-expansion-rulebook"
-version = "0.67.3"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
+version = "0.67.5"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.5#f5173a9d418ef11b9489720c11fc253cd5e13dcb"
 dependencies = [
  "getrandom 0.4.3",
  "serde",
@@ -1236,6 +1243,7 @@ name = "formiga-farm"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "directories",
  "eframe",
  "formiga-art",
@@ -1281,8 +1289,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-travel"
-version = "0.67.3"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
+version = "0.67.5"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.5#f5173a9d418ef11b9489720c11fc253cd5e13dcb"
 dependencies = [
  "formiga-art",
  "formiga-core",
@@ -2969,7 +2977,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3306,7 +3314,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.5",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3539,7 +3547,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4075,7 +4083,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

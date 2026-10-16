@@ -40,6 +40,19 @@ impl FarmApp {
         {
             self.choose_picture();
         }
+        if ui
+            .add_sized(
+                [ui.available_width(), 26.0],
+                egui::Button::new("From a design code\u{2026}"),
+            )
+            .on_hover_text("Paste a look someone copied from Farm with Copy code.")
+            .clicked()
+        {
+            self.dialog = Some(Dialog::Code {
+                text: String::new(),
+                error: None,
+            });
+        }
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             for shelf in Shelf::ALL {
