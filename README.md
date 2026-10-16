@@ -11,6 +11,8 @@ its soil, with tunnels and seed stores and a few tiny ants going about their bus
 everything. The ant farm is only scenery. The work happens on the stage in the middle, where the
 creature stands large and alive while you change it.
 
+![Every preset Farm starts from, each at rest and mid-step: Desktop's companion bodies, then the animals from a panda and a red fox to whales, turtles and an eagle](docs/assets/presets.png)
+
 ## What it offers
 
 - **Real body plans, not paint jobs.** Besides Desktop's five companion bodies there are seven
@@ -97,7 +99,8 @@ cargo run --release -p formiga-farm -- --from-save "path/to/colony.json" --creat
 `--preset animal.giant_panda` opens on a preset, and `--picture cat.png` opens reading a
 picture. `--help` lists everything, including the review pictures drawn without a window
 (`--render-presets`, `--render-poses`, `--render-habitat`, and `--import` for what a picture is
-read as). `--pixels` draws the presets and poses at Desktop's companion size instead.
+read as). `--pixels` draws the presets and poses at Desktop's companion size instead. The picture at the top
+of this page is `--render-presets docs/assets/presets.png`.
 
 Keys: ⌘Z or Ctrl+Z undoes and adding Shift redoes; ⌘S or Ctrl+S keeps the draft; B shows before
 and after; F turns round; 1 to 8 choose a pose.
@@ -145,3 +148,8 @@ same way without publishing anything. Both sign when `FORMIGA_CODESIGN_IDENTITY`
 `FORMIGA_NOTARY_PROFILE`) or `FORMIGA_SIGNTOOL_CERT_SHA1` is set, and otherwise ship unsigned.
 `scripts/set-version.sh <version> [<desktop tag>]` writes a new version, or a new Desktop tag,
 everywhere it is named; `--check` says whether every place agrees.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Formiga Farm is a personal project and does not take outside pull
+requests, but forks are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) says how to make your own.

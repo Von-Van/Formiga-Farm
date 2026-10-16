@@ -55,7 +55,13 @@ pub fn encode(design: &Design, name: &str) -> Result<String> {
 /// The look in `text`, which may have spaces or line breaks around or inside it from being
 /// pasted.
 pub fn decode(text: &str) -> Result<Shared> {
-    let code: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    // One character past the limit is enough to know it is too long, so a huge paste is never
+    // copied whole.
+    let code: String = text
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .take(MAX_CODE_CHARS + 1)
+        .collect();
     if code.len() > MAX_CODE_CHARS {
         bail!("That is too long to be a design code.");
     }
