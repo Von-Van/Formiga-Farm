@@ -235,18 +235,21 @@ impl Store {
         presets
     }
 
-    /// Keep `draft`, whole, stamped with the time.
-    pub fn save_draft(&self, draft: &mut Draft) -> std::io::Result<()> {
+    /// Keep `draft`, whole, stamped with the time. Returns the drafts let go to keep the shelf
+    /// to its bound, so the owner can be told which; nothing is let go without a word.
+    pub fn save_draft(&self, draft: &mut Draft) -> std::io::Result<Vec<Draft>> {
         draft.saved_at_utc = now();
         write(self.dir(DRAFTS), &draft.id, draft)?;
         // Keep the shelf to its bound: the oldest go first, and never the one just kept, whatever
         // the clock said when the others were.
-        for old in self.every_draft().iter().skip(MAX_DRAFTS) {
+        let mut let_go = Vec::new();
+        for old in self.every_draft().into_iter().skip(MAX_DRAFTS) {
             if old.id != draft.id {
                 self.delete_draft(&old.id);
+                let_go.push(old);
             }
         }
-        Ok(())
+        Ok(let_go)
     }
 
     pub fn delete_draft(&self, id: &str) {
@@ -434,9 +437,15 @@ mod tests {
         }
         let mut draft = Draft::new("New", crate::presets::blank(), None, None);
         draft.id = "ffffffffffffffff".into();
-        store.save_draft(&mut draft).unwrap();
+        let let_go = store.save_draft(&mut draft).unwrap();
         let drafts = store.drafts();
         assert_eq!(drafts.len(), MAX_DRAFTS);
+        let oldest_id = format!("{:016x}", MAX_DRAFTS - 1);
+        assert_eq!(
+            let_go.iter().map(|d| d.id.as_str()).collect::<Vec<_>>(),
+            [oldest_id.as_str()],
+            "the one let go is named"
+        );
         assert_eq!(drafts[0], draft, "the one just kept is on the shelf, first");
         let oldest = format!("{:016x}", MAX_DRAFTS - 1);
         assert!(drafts.iter().all(|kept| kept.id != oldest));

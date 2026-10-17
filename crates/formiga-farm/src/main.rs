@@ -1,5 +1,6 @@
-//! Formiga Farm: the workshop where Formigas are made and remade. It opens from Desktop's
-//! Journal, on a creature to reshape or on nothing at all, and hands Desktop a design to keep.
+//! Formiga Farm: the workshop where Formigas are made and remade. It opens from Desktop, on a
+//! creature to reshape from its notebook page or on nothing at all from the studio, and hands
+//! Desktop a design to keep.
 
 mod app;
 mod drawing;

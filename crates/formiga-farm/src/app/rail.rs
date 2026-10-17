@@ -158,6 +158,21 @@ impl FarmApp {
             }
             _ => None,
         };
+        // A full shelf says so before it has to let a draft go: the next new draft takes the
+        // oldest one's place.
+        let full = self.shelf == Shelf::Drafts
+            && self.drafts.len() >= crate::store::MAX_DRAFTS
+            && self.drafts.iter().all(|draft| draft.id != self.draft.id);
+        if full {
+            ui.label(
+                egui::RichText::new(format!(
+                    "The shelf is full at {} drafts. The next one kept lets the oldest go, so delete any you don\u{2019}t need, or save one as a preset to keep it for good.",
+                    crate::store::MAX_DRAFTS
+                ))
+                .small()
+                .color(ink.warn),
+            );
+        }
         let mut picked = None;
         let mut delete = None;
         egui::ScrollArea::vertical()

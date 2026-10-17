@@ -333,9 +333,19 @@ impl FarmApp {
         self.draft.design = self.editor.design().clone();
         self.draft.preset = self.editor.preset.clone();
         match self.store.save_draft(&mut self.draft) {
-            Ok(()) => {
+            Ok(let_go) => {
                 self.kept_changes = self.editor.changes;
                 self.drafts = self.store.drafts();
+                if let Some(oldest) = let_go.first() {
+                    self.say(
+                        format!(
+                            "The drafts shelf holds {}, so the oldest, \u{201c}{}\u{201d}, was let go to keep this one.",
+                            crate::store::MAX_DRAFTS,
+                            oldest.name
+                        ),
+                        true,
+                    );
+                }
             }
             Err(error) => self.say(format!("The draft could not be kept: {error}"), true),
         }
@@ -401,8 +411,12 @@ impl FarmApp {
                         self.pictures.forget_before();
                         self.say(format!("{name} has their new look."), false);
                     }
+                    Verdict::Welcomed if self.host.is_rehearsal() => self.say(
+                        "With Desktop, your new Formiga would now wait in its studio to be adopted. A rehearsal keeps nothing outside this window.",
+                        false,
+                    ),
                     Verdict::Welcomed => self.say(
-                        "Desktop is welcoming your new Formiga. Give them a name in Desktop's Journal.",
+                        "Your new Formiga is waiting in Desktop's studio. Adopt them there to give them a name and a life.",
                         false,
                     ),
                     Verdict::Stale { current, revision } => {
@@ -593,10 +607,15 @@ impl FarmApp {
     fn top_bar(&mut self, ui: &mut egui::Ui, narrow: bool) {
         let ink = style::ink(ui.visuals().dark_mode);
         ui.horizontal(|ui| {
-            if ui
-                .button("Back to Journal")
-                .on_hover_text("Close Farm and go back to Desktop's Journal. Your draft is kept.")
-                .clicked()
+            let (close, why) = if self.host.is_rehearsal() {
+                ("Close", "Close Farm. Your draft is kept.")
+            } else {
+                (
+                    "Back to Desktop",
+                    "Close Farm and go back to Formiga Desktop. Your draft is kept.",
+                )
+            };
+            if ui.button(close).on_hover_text(why).clicked()
             {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -1112,7 +1131,7 @@ mod tests {
         assert!(
             app.toast
                 .as_ref()
-                .is_some_and(|t| t.text.contains("welcoming"))
+                .is_some_and(|t| t.text.contains("studio") && t.text.contains("rehearsal"))
         );
         let Host::Rehearsal(rehearsal) = &app.host else {
             panic!()

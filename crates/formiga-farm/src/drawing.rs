@@ -21,6 +21,17 @@ pub const DETAIL: u32 = 2;
 /// draws a sculpted form on the largest screens.
 pub const MAX_DETAIL: u32 = FINEST_DETAIL;
 
+/// `design` as Formiga Hill and Home will draw it: the creature's look carried on a trip, exactly
+/// as Desktop sends it. A trip leaves a sculpted form behind, so it travels as the companion
+/// recipe Desktop keeps beside it ([`Design::fallback_recipe`]), in its colours. Anything a trip
+/// could not carry is drawn as Farm has it.
+pub fn as_it_travels(design: &Design, base: &AppearanceGenome) -> Design {
+    let genome = design.genome(base);
+    formiga_travel::TravelAppearance::from(&genome)
+        .to_genome()
+        .map_or_else(|_| design.clone(), |travelled| Design::of(&travelled))
+}
+
 /// The face Desktop shows for `intent`, as `DesignRenderer::intent_frame` draws it.
 fn intent_face(intent: Intent) -> FaceRenderState {
     let BodyClip::Action(action) = intent.clip() else {
@@ -119,6 +130,25 @@ mod tests {
         );
         designs.push(Design::of(&crate::review::stand_in()));
         designs
+    }
+
+    #[test]
+    fn a_sculpted_form_travels_as_its_nearest_companion_body_and_a_companion_as_itself() {
+        let base = crate::review::stand_in();
+        for design in designs() {
+            let travelled = as_it_travels(&design, &base);
+            assert!(travelled.form.sculpt().is_none());
+            match &design.form {
+                Form::Sculpted { .. } => assert_eq!(
+                    travelled.form,
+                    Form::Companion {
+                        recipe: design.fallback_recipe(base.design).unwrap()
+                    }
+                ),
+                _ => assert_eq!(travelled.genome(&base), design.genome(&base)),
+            }
+            assert_eq!(travelled.face, design.face);
+        }
     }
 
     #[test]

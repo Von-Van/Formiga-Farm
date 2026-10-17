@@ -36,6 +36,8 @@ pub struct FrameKey {
     pub outlined: bool,
     /// Pixels to each of the frame's: 1 for Desktop's own frame, more for high definition.
     pub detail: u32,
+    /// Drawn as Formiga Hill and Home will draw it ([`crate::drawing::as_it_travels`]).
+    pub travels: bool,
 }
 
 #[derive(Default)]

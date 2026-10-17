@@ -136,6 +136,10 @@ pub fn check(
                 "Its eyes are hard to see against its face. Try lighter markings round them, or another eye colour.",
             ));
         }
+        notices.push(notice(
+            Level::Note,
+            "Formiga Hill and Home can't draw sculpted bodies yet. There it visits as the companion body nearest its own, in its colours. Choose Home or Hill under the stage to see how.",
+        ));
         if sculpt.plan == Plan::Floater
             && sculpt.part(Slot::Tail).is_none()
             && sculpt.part(Slot::Fins).is_none()

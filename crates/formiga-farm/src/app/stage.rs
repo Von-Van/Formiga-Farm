@@ -39,9 +39,21 @@ impl FarmApp {
         ((self.clock * f64::from(fps)) as u64 % u64::from(frames.max(1))) as u8
     }
 
+    /// What to say under Formiga Hill or Home: `there`, or, for a sculpted form, that those apps
+    /// draw it as its nearest companion body for now.
+    fn travelling_caption(&self, there: &'static str) -> &'static str {
+        if self.shown().form.sculpt().is_some() {
+            "Formiga Hill and Home can't draw sculpted bodies yet,\nso it visits them as its nearest companion body, in its colours."
+        } else {
+            there
+        }
+    }
+
     /// Draw the shown design, `scale` physical pixels to an art pixel, standing with its ground
     /// row on `floor`, centred on `x`. Returns where the frame went. `hd` draws a sculpted form
-    /// in Farm's own high definition; otherwise it is Desktop's own pixels, made larger.
+    /// in Farm's own high definition; otherwise it is Desktop's own pixels, made larger. `travels`
+    /// draws it as Formiga Hill and Home will ([`crate::drawing::as_it_travels`]).
+    #[allow(clippy::too_many_arguments)]
     fn figure(
         &mut self,
         ui: &egui::Ui,
@@ -50,10 +62,15 @@ impl FarmApp {
         scale: f32,
         outlined: bool,
         hd: bool,
+        travels: bool,
     ) -> Rect {
         let ctx = ui.ctx().clone();
         let points = scale / ctx.pixels_per_point();
-        let design = self.shown().clone();
+        let design = if travels {
+            crate::drawing::as_it_travels(self.shown(), &self.base)
+        } else {
+            self.shown().clone()
+        };
         let key = FrameKey {
             design: if self.before {
                 u64::MAX
@@ -65,6 +82,7 @@ impl FarmApp {
             facing_right: self.facing_right,
             outlined,
             detail: if hd { crate::drawing::DETAIL } else { 1 },
+            travels,
         };
         let baseline = DesignRenderer::resting_baseline(&design, &self.base, self.reduce_motion());
         let texture = self.pictures.frame(
@@ -116,7 +134,15 @@ impl FarmApp {
                     ],
                     Stroke::new(2.0, ink.stage_edge),
                 );
-                let rect = self.figure(ui, chamber.center().x, floor, scale, false, !self.grid);
+                let rect = self.figure(
+                    ui,
+                    chamber.center().x,
+                    floor,
+                    scale,
+                    false,
+                    !self.grid,
+                    false,
+                );
                 if self.grid {
                     let pixel = scale / ppp;
                     let line = Stroke::new(1.0, ink.line.gamma_multiply(0.35));
@@ -199,6 +225,7 @@ impl FarmApp {
                     2.0,
                     true,
                     false,
+                    false,
                 );
                 self.figure(
                     ui,
@@ -206,6 +233,7 @@ impl FarmApp {
                     window.min.y,
                     2.0,
                     true,
+                    false,
                     false,
                 );
                 caption(
@@ -245,11 +273,11 @@ impl FarmApp {
                     let b = Pos2::new(center.x + w * t, center.y + h - h * t);
                     ui.painter().line_segment([a, b], Stroke::new(1.0, wood[1]));
                 }
-                self.figure(ui, center.x, center.y, 4.0, false, false);
+                self.figure(ui, center.x, center.y, 4.0, false, false, true);
                 caption(
                     ui,
                     Pos2::new(center.x, center.y + h + 10.0),
-                    "Standing on its own spot in Formiga Home.",
+                    self.travelling_caption("Standing on its own spot in Formiga Home."),
                 );
             }
             View::Hill => {
@@ -279,11 +307,11 @@ impl FarmApp {
                     Stroke::NONE,
                 ));
                 let floor = ground - field.height() * 0.08 + 1.0;
-                self.figure(ui, field.center().x, floor, 3.0, false, false);
+                self.figure(ui, field.center().x, floor, 3.0, false, false, true);
                 caption(
                     ui,
                     Pos2::new(field.center().x, field.max.y + 6.0),
-                    "Out on the grass of Formiga Hill.",
+                    self.travelling_caption("Out on the grass of Formiga Hill."),
                 );
             }
         }
