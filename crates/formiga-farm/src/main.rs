@@ -10,6 +10,7 @@ mod icon;
 mod import;
 mod notices;
 mod paint;
+mod palettes;
 mod presets;
 mod review;
 mod session;

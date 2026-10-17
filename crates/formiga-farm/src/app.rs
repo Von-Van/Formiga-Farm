@@ -142,6 +142,7 @@ pub struct FarmApp {
     presets: Vec<Preset>,
     drafts: Vec<Draft>,
     mine: Vec<PersonalPreset>,
+    palettes: Vec<crate::store::Palette>,
     notices: (u64, Vec<Notice>),
     clock: f64,
     rail_open: bool,
@@ -204,6 +205,7 @@ impl FarmApp {
         let place = store.data().and_then(WindowPlace::load);
         let drafts = store.drafts();
         let mine = store.presets();
+        let palettes = store.palettes();
         let shelf = if matches!(snapshot.mode, FarmMode::EditExisting { .. }) {
             Shelf::BodyForms
         } else {
@@ -238,6 +240,7 @@ impl FarmApp {
             presets: crate::presets::all(),
             drafts,
             mine,
+            palettes,
             notices: (u64::MAX, Vec::new()),
             clock: 0.0,
             rail_open: true,

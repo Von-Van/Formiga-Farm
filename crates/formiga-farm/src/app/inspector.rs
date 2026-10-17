@@ -81,12 +81,83 @@ fn choose<T: PartialEq + Copy>(
     changed
 }
 
-fn color(ui: &mut egui::Ui, label: &str, value: &mut [u8; 3]) -> bool {
+/// A colour's well, with a menu of `swatches` beside it to take one from.
+fn color(ui: &mut egui::Ui, label: &str, value: &mut [u8; 3], swatches: &[[u8; 3]]) -> bool {
     let mut changed = false;
     row(ui, label, |ui| {
-        changed = ui.color_edit_button_srgb(value).changed();
+        changed = ui
+            .color_edit_button_srgb(value)
+            .on_hover_text(format!("{label}: {}", hex(*value)))
+            .changed();
+        if swatches.is_empty() {
+            return;
+        }
+        ui.menu_button("\u{2026}", |ui| {
+            ui.label(
+                egui::RichText::new("This design\u{2019}s colours, then your palettes\u{2019}")
+                    .small(),
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.set_max_width(184.0);
+                for &swatch in swatches {
+                    if swatch_button(ui, swatch, *value == swatch).clicked() {
+                        *value = swatch;
+                        changed = true;
+                        ui.close();
+                    }
+                }
+            });
+        })
+        .response
+        .on_hover_text(format!("Swatches for {}", label.to_lowercase()));
     });
     changed
+}
+
+/// A colour as `#rrggbb`.
+fn hex(rgb: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
+}
+
+fn swatch_button(ui: &mut egui::Ui, rgb: [u8; 3], chosen: bool) -> egui::Response {
+    let ink = style::ink(ui.visuals().dark_mode);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+    let edge = if chosen || response.hovered() {
+        egui::Stroke::new(2.0, ink.text)
+    } else {
+        egui::Stroke::new(1.0, ink.line)
+    };
+    ui.painter().rect(
+        rect,
+        3.0,
+        egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]),
+        edge,
+        egui::StrokeKind::Inside,
+    );
+    response.on_hover_text(hex(rgb))
+}
+
+/// A palette's colours in a row, to see at a glance.
+fn strip(ui: &mut egui::Ui, colors: &[[u8; 3]]) {
+    let ink = style::ink(ui.visuals().dark_mode);
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(10.0 * colors.len() as f32, 14.0),
+        egui::Sense::hover(),
+    );
+    for (index, rgb) in colors.iter().enumerate() {
+        let cell = egui::Rect::from_min_size(
+            rect.min + egui::vec2(10.0 * index as f32, 0.0),
+            egui::vec2(10.0, 14.0),
+        );
+        ui.painter()
+            .rect_filled(cell, 0.0, egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]));
+    }
+    ui.painter().rect_stroke(
+        rect,
+        2.0,
+        egui::Stroke::new(1.0, ink.line),
+        egui::StrokeKind::Outside,
+    );
 }
 
 fn heading(ui: &mut egui::Ui, text: &str) {
@@ -480,16 +551,26 @@ impl FarmApp {
     }
 
     fn finish_page(&mut self, ui: &mut egui::Ui, design: &Design) {
+        let swatches = crate::palettes::swatches(
+            design,
+            self.palettes
+                .iter()
+                .map(|palette| palette.colors.as_slice()),
+            24,
+        );
+        if !matches!(design.form, Form::Original) {
+            self.palette_row(ui, design);
+        }
         match &design.form {
-            Form::Sculpted { sculpt } => self.sculpt_finish(ui, sculpt),
+            Form::Sculpted { sculpt } => self.sculpt_finish(ui, sculpt, &swatches),
             Form::Companion { recipe } => {
                 let mut r = *recipe;
                 let mut key = None;
                 heading(ui, "Colours");
-                if color(ui, "Coat", &mut r.coat) {
+                if color(ui, "Coat", &mut r.coat, &swatches) {
                     key = Some("coat");
                 }
-                if color(ui, "Accent", &mut r.accent) {
+                if color(ui, "Accent", &mut r.accent, &swatches) {
                     key = Some("accent");
                 }
                 let mut candy = r.classic.coat > 0;
@@ -537,11 +618,14 @@ impl FarmApp {
                             key = Some("belly");
                         }
                     });
-                    if r.details.belly > 0 && color(ui, "Belly colour", &mut r.details.belly_color)
+                    if r.details.belly > 0
+                        && color(ui, "Belly colour", &mut r.details.belly_color, &swatches)
                     {
                         key = Some("belly-color");
                     }
-                    if r.details.tip > 0 && color(ui, "Tip colour", &mut r.details.tip_color) {
+                    if r.details.tip > 0
+                        && color(ui, "Tip colour", &mut r.details.tip_color, &swatches)
+                    {
                         key = Some("tip-color");
                     }
                 }
@@ -557,7 +641,79 @@ impl FarmApp {
         }
     }
 
-    fn sculpt_finish(&mut self, ui: &mut egui::Ui, sculpt: &Sculpt) {
+    /// Put a palette on the design, or keep its colours as one.
+    fn palette_row(&mut self, ui: &mut egui::Ui, design: &Design) {
+        let mut put_on = None;
+        let mut forget = None;
+        let mut keep = false;
+        row(ui, "Palette", |ui| {
+            ui.menu_button("Use one\u{2026}", |ui| {
+                ui.set_max_height(360.0);
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    if !self.palettes.is_empty() {
+                        ui.label(egui::RichText::new("Yours").strong());
+                        for palette in &self.palettes {
+                            ui.horizontal(|ui| {
+                                strip(ui, &palette.colors);
+                                if ui.button(&palette.name).clicked() {
+                                    put_on = Some(palette.colors.clone());
+                                    ui.close();
+                                }
+                                if ui
+                                    .small_button("\u{00d7}")
+                                    .on_hover_text("Forget this palette.")
+                                    .clicked()
+                                {
+                                    forget = Some(palette.id.clone());
+                                }
+                            });
+                        }
+                        ui.separator();
+                    }
+                    ui.label(egui::RichText::new("From the animals").strong());
+                    for (name, colors) in crate::palettes::animals(&self.presets) {
+                        ui.horizontal(|ui| {
+                            strip(ui, &colors);
+                            if ui.button(name).clicked() {
+                                put_on = Some(colors.clone());
+                                ui.close();
+                            }
+                        });
+                    }
+                });
+            })
+            .response
+            .on_hover_text("Put another design's colours on this one. Only the colours change.");
+            keep = ui
+                .button("Keep these")
+                .on_hover_text("Keep these colours as a palette, to put on another design.")
+                .clicked();
+        });
+        if let Some(colors) = put_on {
+            self.editor
+                .edit(None, |d| *d = crate::palettes::with_colors(d, &colors));
+        }
+        if let Some(id) = forget {
+            self.store.delete_palette(&id);
+            self.palettes = self.store.palettes();
+        }
+        if keep {
+            let palette =
+                crate::store::Palette::new(&self.draft.name, crate::palettes::colors_of(design));
+            match self.store.save_palette(&palette) {
+                Ok(()) => {
+                    self.palettes = self.store.palettes();
+                    self.say(
+                        format!("Kept these colours as \u{201c}{}\u{201d}.", palette.name),
+                        false,
+                    );
+                }
+                Err(error) => self.say(format!("Could not keep these colours: {error}"), true),
+            }
+        }
+    }
+
+    fn sculpt_finish(&mut self, ui: &mut egui::Ui, sculpt: &Sculpt, swatches: &[[u8; 3]]) {
         let ink = style::ink(ui.visuals().dark_mode);
         let mut coat = sculpt.coat;
         let mut key = None;
@@ -581,12 +737,12 @@ impl FarmApp {
             (Ink::Feature, "Horns & claws"),
         ] {
             let mut value = coat.ink(ink);
-            if color(ui, label, &mut value) {
+            if color(ui, label, &mut value, swatches) {
                 coat.set_ink(ink, value);
                 key = Some(label);
             }
         }
-        if color(ui, "Eyes", &mut coat.eyes) {
+        if color(ui, "Eyes", &mut coat.eyes, swatches) {
             key = Some("eyes");
         }
         if slider(ui, "Belly reach", &mut coat.underside_reach, 0, STEPS) {
@@ -623,7 +779,7 @@ impl FarmApp {
                     ) {
                         key = Some(format!("marking-{index}-kind"));
                     }
-                    if color(ui, "Colour", &mut marking.color) {
+                    if color(ui, "Colour", &mut marking.color, swatches) {
                         key = Some(format!("marking-{index}-color"));
                     }
                     if slider(ui, "Amount", &mut marking.amount, 0, STEPS) {

@@ -38,6 +38,9 @@ creature stands large and alive while you change it.
   (the coat, its colours and up to four markings) and *Face* (one of Formiga's twelve face
   layouts, and the eyes, brows, mouth and cheeks). Every layer can be rolled at random on its own
   or put back as it started.
+- **Colours to start from.** Every colour has swatches beside it: the design's own colours and
+  those of your palettes. Under *Finish*, any animal's colours, or a palette you kept, can be put
+  on the design in one go, and the colours you have can be kept as a palette of your own.
 - **Seen as it will live.** The strip under the stage plays it idle, moving, reacting,
   inspecting, resting, celebrating, being social and being held, facing either way, with every
   one of its expressions. It also shows it at its own size on a desktop, on a floor in Formiga
@@ -141,6 +144,7 @@ Farm's data folder is:
 | --- | --- |
 | `drafts/*.json` | Designs being worked on, each kept whole as you go |
 | `presets/*.json` | Your own presets |
+| `palettes/*.json` | Your own palettes: colours only |
 | `window.json` | Where the window was |
 | `open.lock` | Held while a window is open |
 
