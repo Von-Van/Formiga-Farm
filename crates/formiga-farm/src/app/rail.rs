@@ -14,6 +14,15 @@ enum Pick {
     Arrival,
 }
 
+/// What can be done with a shelf's entry besides starting from it.
+enum Act {
+    Compare,
+    Rename(Deletable),
+    Duplicate(Deletable),
+    KeepAsPreset,
+    CopyCode,
+}
+
 struct Entry {
     key: String,
     name: String,
@@ -175,6 +184,7 @@ impl FarmApp {
         }
         let mut picked = None;
         let mut delete = None;
+        let mut act = None;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -205,22 +215,24 @@ impl FarmApp {
                                 ui.label(egui::RichText::new(note).small().color(ink.faint));
                             }
                         });
-                        if let Some(what) = &entry.delete {
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui
-                                        .small_button("\u{2715}")
-                                        .on_hover_text(
-                                            "Throw this away. Nobody in the colony changes.",
-                                        )
-                                        .clicked()
-                                    {
-                                        delete = Some((what.clone(), entry.name.clone()));
-                                    }
-                                },
-                            );
-                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if let Some(what) = &entry.delete
+                                && ui
+                                    .small_button("\u{2715}")
+                                    .on_hover_text("Throw this away. Nobody in the colony changes.")
+                                    .clicked()
+                            {
+                                delete = Some((what.clone(), entry.name.clone()));
+                            }
+                            ui.menu_button("\u{2026}", |ui| {
+                                if let Some(chosen) = entry_menu(ui, entry) {
+                                    act = Some((index, chosen));
+                                    ui.close();
+                                }
+                            })
+                            .response
+                            .on_hover_text("Compare, rename, copy and more");
+                        });
                     });
                     let response = ui.interact(
                         row.response.rect,
@@ -238,11 +250,20 @@ impl FarmApp {
                     if response.clicked() {
                         picked = Some(index);
                     }
+                    response.context_menu(|ui| {
+                        if let Some(chosen) = entry_menu(ui, entry) {
+                            act = Some((index, chosen));
+                            ui.close();
+                        }
+                    });
                     ui.add_space(2.0);
                 }
             });
         if let Some((what, name)) = delete {
             self.dialog = Some(Dialog::Delete { what, name });
+        } else if let Some((index, act)) = act {
+            let entry = entries.swap_remove(index);
+            self.act_on(ui.ctx(), entry, act);
         } else if let Some(index) = picked {
             let entry = entries.swap_remove(index);
             match entry.pick {
@@ -262,4 +283,100 @@ impl FarmApp {
             }
         }
     }
+}
+
+impl FarmApp {
+    fn act_on(&mut self, ctx: &egui::Context, entry: Entry, act: Act) {
+        match act {
+            Act::Compare => self.compare(&entry.name, entry.design),
+            Act::Rename(what) => {
+                self.dialog = Some(Dialog::Rename {
+                    what,
+                    name: entry.name,
+                });
+            }
+            Act::Duplicate(Deletable::Draft(id)) => {
+                if let Some(draft) = self.drafts.iter().find(|d| d.id == id) {
+                    let mut copy = crate::store::Draft::new(
+                        &format!("{} (copy)", draft.name),
+                        draft.design.clone(),
+                        draft.preset.clone(),
+                        draft.for_name.clone(),
+                    );
+                    match self.store.save_draft(&mut copy) {
+                        Ok(_) => {
+                            self.drafts = self.store.drafts();
+                            self.say(
+                                format!("Kept a copy as \u{201c}{}\u{201d}.", copy.name),
+                                false,
+                            );
+                        }
+                        Err(error) => self.say(format!("Could not copy it: {error}"), true),
+                    }
+                }
+            }
+            Act::Duplicate(Deletable::Preset(_)) => {
+                let copy = crate::store::PersonalPreset::new(
+                    &format!("{} (copy)", entry.name),
+                    entry.design,
+                );
+                match self.store.save_preset(&copy) {
+                    Ok(()) => {
+                        self.mine = self.store.presets();
+                        self.say(
+                            format!("Kept a copy as \u{201c}{}\u{201d}.", copy.name),
+                            false,
+                        );
+                    }
+                    Err(error) => self.say(format!("Could not copy it: {error}"), true),
+                }
+            }
+            Act::KeepAsPreset => {
+                let preset = crate::store::PersonalPreset::new(&entry.name, entry.design);
+                match self.store.save_preset(&preset) {
+                    Ok(()) => {
+                        self.mine = self.store.presets();
+                        self.say(
+                            format!("Kept \u{201c}{}\u{201d} in My presets.", preset.name),
+                            false,
+                        );
+                    }
+                    Err(error) => self.say(format!("Could not keep it: {error}"), true),
+                }
+            }
+            Act::CopyCode => self.copy_code_of(ctx, &entry.design, &entry.name),
+        }
+    }
+}
+
+/// The menu for one entry on a shelf. Returns what was chosen, if anything was.
+fn entry_menu(ui: &mut egui::Ui, entry: &Entry) -> Option<Act> {
+    let mut chosen = None;
+    if ui
+        .button("Compare with the workbench")
+        .on_hover_text("Show it beside the design on the workbench.")
+        .clicked()
+    {
+        chosen = Some(Act::Compare);
+    }
+    if let Some(what) = &entry.delete {
+        if ui.button("Rename\u{2026}").clicked() {
+            chosen = Some(Act::Rename(what.clone()));
+        }
+        if ui.button("Duplicate").clicked() {
+            chosen = Some(Act::Duplicate(what.clone()));
+        }
+        if matches!(what, Deletable::Draft(_)) && ui.button("Keep as a preset").clicked() {
+            chosen = Some(Act::KeepAsPreset);
+        }
+    }
+    if crate::share::shareable(&entry.design)
+        && ui
+            .button("Copy code")
+            .on_hover_text("Copy this look as a design code, to send to someone or keep.")
+            .clicked()
+    {
+        chosen = Some(Act::CopyCode);
+    }
+    chosen
 }

@@ -50,6 +50,7 @@ For review, of the window itself:
                            Apply button does; with --snap, take the picture after Desktop answers
   --layer <form|parts|finish|face>  --intent <idle|move|...>  --view <stage|desktop|home|hill>
   --shelf <animals|forms|mine|drafts>  --theme <light|dark>
+  --compare <ID>           Show a preset beside the workbench, as Compare does
   --picture <IMAGE>        Open reading a picture, as From a picture does
 
   --farm-version           Print the newest Farm version this build reads, for packaging
@@ -74,6 +75,7 @@ struct Args {
     intent: Option<Intent>,
     view: Option<View>,
     shelf: Option<Shelf>,
+    compare: Option<String>,
     theme: Option<String>,
 }
 
@@ -89,6 +91,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Args>> {
         intent: None,
         view: None,
         shelf: None,
+        compare: None,
         theme: None,
     };
     let mut creature = None;
@@ -170,6 +173,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Args>> {
                 })
             }
             "--theme" => parsed.theme = Some(value("--theme")?),
+            "--compare" => parsed.compare = Some(value("--compare")?),
             other => bail!("unexpected argument {other}\n\n{USAGE}"),
         }
     }
@@ -356,6 +360,10 @@ fn main() -> Result<()> {
             app.show(args.layer, args.intent, args.view);
             if let Some(shelf) = args.shelf {
                 app.shelf(shelf);
+            }
+            if let Some(id) = &args.compare {
+                let preset = presets::find(id).ok_or_else(|| format!("no preset {id}"))?;
+                app.compare(preset.name, preset.design);
             }
             match args.theme.as_deref() {
                 Some("dark") => cc.egui_ctx.set_theme(eframe::egui::ThemePreference::Dark),

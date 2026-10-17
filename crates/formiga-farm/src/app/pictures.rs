@@ -24,6 +24,9 @@ pub fn drawn_hd(design: &Design) -> bool {
     matches!(design.form, Form::Sculpted { .. })
 }
 
+/// The design key of the frames of a design shown beside the workbench's, to compare.
+pub const COMPARED: u64 = u64::MAX - 1;
+
 /// Which frame of which design.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct FrameKey {
@@ -64,7 +67,8 @@ impl Pictures {
         reduce_motion: bool,
     ) -> egui::TextureHandle {
         if self.drawn_for != current {
-            self.frames.retain(|key, _| key.design == u64::MAX);
+            self.frames
+                .retain(|key, _| key.design == u64::MAX || key.design == COMPARED);
             self.drawn_for = current;
         }
         if let Some(texture) = self.frames.get(&key) {
@@ -103,6 +107,12 @@ impl Pictures {
     }
 
     /// Forget the frames of the design as it was, when that changes.
+    /// Let go of the frames of a design shown beside the workbench's, which are kept as
+    /// [`COMPARED`].
+    pub fn forget_compared(&mut self) {
+        self.frames.retain(|key, _| key.design != COMPARED);
+    }
+
     pub fn forget_before(&mut self) {
         self.frames.retain(|key, _| key.design != u64::MAX);
     }

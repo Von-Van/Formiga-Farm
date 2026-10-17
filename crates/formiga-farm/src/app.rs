@@ -85,6 +85,8 @@ enum Dialog {
     SavePreset { name: String },
     /// Making sure before a draft or a preset is thrown away.
     Delete { what: Deletable, name: String },
+    /// Giving a draft or a preset another name.
+    Rename { what: Deletable, name: String },
     /// Desktop ended the session.
     Recalled,
     /// A picture being read.
@@ -132,6 +134,8 @@ pub struct FarmApp {
     before: bool,
     grid: bool,
     seed: u32,
+    /// A design shown beside the one on the workbench, by its name, to compare them.
+    compare: Option<(String, Design)>,
     /// What "Roll everything" leaves as it is.
     locks: crate::editor::Locks,
     pending: Option<(u32, f64)>,
@@ -232,6 +236,7 @@ impl FarmApp {
             before: false,
             grid: false,
             seed: 1,
+            compare: None,
             locks: crate::editor::Locks::default(),
             pending: None,
             expected_revision,
@@ -289,6 +294,13 @@ impl FarmApp {
 
     pub fn shelf(&mut self, shelf: Shelf) {
         self.shelf = shelf;
+    }
+
+    /// Show `design` beside the workbench's, by `name`, to compare them.
+    pub fn compare(&mut self, name: &str, design: Design) {
+        self.pictures.forget_compared();
+        self.compare = Some((name.to_owned(), design));
+        self.view = View::Stage;
     }
 
     fn reduce_motion(&self) -> bool {
@@ -725,7 +737,13 @@ impl FarmApp {
 
     /// Put the design on the bench on the clipboard as a design code, and say so.
     fn copy_code(&mut self, ctx: &egui::Context) {
-        match crate::share::encode(self.editor.design(), &self.draft.name) {
+        let (design, name) = (self.editor.design().clone(), self.draft.name.clone());
+        self.copy_code_of(ctx, &design, &name);
+    }
+
+    /// Copy `design` as a design code named `name`, and say how that went.
+    fn copy_code_of(&mut self, ctx: &egui::Context, design: &Design, name: &str) {
+        match crate::share::encode(design, name) {
             Ok(code) => {
                 ctx.copy_text(code);
                 self.say(
@@ -907,6 +925,49 @@ impl FarmApp {
                             keep_open = false;
                         }
                     });
+                }
+                Dialog::Rename { what, name } => {
+                    ui.heading("Rename");
+                    let mut text = name.clone();
+                    let edit = ui.add(
+                        egui::TextEdit::singleline(&mut text)
+                            .char_limit(crate::store::MAX_NAME_CHARS)
+                            .hint_text("Its name"),
+                    );
+                    edit.request_focus();
+                    let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    ui.horizontal(|ui| {
+                        if ui.button("Rename").clicked() || enter {
+                            let renamed = match what {
+                                Deletable::Draft(id) => {
+                                    self.store.rename_draft(id, &text).map(|draft| {
+                                        if draft.id == self.draft.id {
+                                            self.draft.name = draft.name;
+                                        }
+                                        self.drafts = self.store.drafts();
+                                    })
+                                }
+                                Deletable::Preset(id) => {
+                                    self.store.rename_preset(id, &text).map(|_| {
+                                        self.mine = self.store.presets();
+                                    })
+                                }
+                            };
+                            if let Err(error) = renamed {
+                                self.say(format!("Could not rename it: {error}"), true);
+                            }
+                            keep_open = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            keep_open = false;
+                        }
+                    });
+                    if keep_open {
+                        self.dialog = Some(Dialog::Rename {
+                            what: what.clone(),
+                            name: text,
+                        });
+                    }
                 }
                 Dialog::Reading { name } => keep_open = self.reading_dialog(ui, name),
                 Dialog::Takes {

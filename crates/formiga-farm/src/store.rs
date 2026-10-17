@@ -317,6 +317,31 @@ impl Store {
         Ok(let_go)
     }
 
+    /// Give the draft `id` a new name, leaving everything else about it, its place on the
+    /// shelf among them. Returns it as now named.
+    pub fn rename_draft(&self, id: &str, name: &str) -> std::io::Result<Draft> {
+        let mut draft = self
+            .every_draft()
+            .into_iter()
+            .find(|draft| draft.id == id)
+            .ok_or_else(|| std::io::Error::other("that draft is no longer kept"))?;
+        draft.name = clean_name(name, "Untitled");
+        write(self.dir(DRAFTS), &draft.id, &draft)?;
+        Ok(draft)
+    }
+
+    /// Give the preset `id` a new name, leaving its look as it is.
+    pub fn rename_preset(&self, id: &str, name: &str) -> std::io::Result<PersonalPreset> {
+        let mut preset = self
+            .presets()
+            .into_iter()
+            .find(|preset| preset.id == id)
+            .ok_or_else(|| std::io::Error::other("that preset is no longer kept"))?;
+        preset.name = clean_name(name, "My Formiga");
+        write(self.dir(PRESETS), &preset.id, &preset)?;
+        Ok(preset)
+    }
+
     pub fn delete_draft(&self, id: &str) {
         delete(self.dir(DRAFTS), id);
     }
@@ -566,6 +591,30 @@ mod tests {
         );
         store.delete_palette(&palette.id);
         assert!(store.palettes().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn renaming_keeps_the_look_and_the_place_on_the_shelf() {
+        let dir = scratch("rename");
+        let store = Store::new(Some(dir.clone()));
+        let fox = crate::presets::find("animal.red_fox").unwrap().design;
+        let mut older = Draft::new("Older", fox.clone(), None, None);
+        store.save_draft(&mut older).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let mut newer = Draft::new("Newer", crate::presets::blank(), None, None);
+        store.save_draft(&mut newer).unwrap();
+        let renamed = store.rename_draft(&older.id, "  Russet\n").unwrap();
+        assert_eq!(renamed.name, "Russet");
+        let drafts = store.drafts();
+        assert_eq!(drafts[1].id, older.id, "still the older of the two");
+        assert_eq!(drafts[1].design, fox);
+        let preset = PersonalPreset::new("Fox", fox.clone());
+        store.save_preset(&preset).unwrap();
+        store.rename_preset(&preset.id, "Vixen").unwrap();
+        assert_eq!(store.presets()[0].name, "Vixen");
+        assert_eq!(store.presets()[0].design, fox);
+        assert!(store.rename_preset("0000000000000000", "Nobody").is_err());
         let _ = std::fs::remove_dir_all(dir);
     }
 

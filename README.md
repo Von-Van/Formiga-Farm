@@ -50,7 +50,9 @@ creature stands large and alive while you change it.
 - **Nothing lost.** Every change can be undone. Drafts are kept as you work and come back after
   Farm closes, even after a crash. The drafts shelf holds 64; when it is full it says so before
   the next new draft lets the oldest go, and names the one it let go. Looks you like can be kept
-  on your own shelf as presets, which are never let go.
+  on your own shelf as presets, which are never let go. Every draft and preset has a menu (its
+  … button, or a right-click) to compare it side by side with the workbench, rename it,
+  duplicate it, keep a draft as a preset, or copy its design code.
 - **Said before, not after.** Notes under the stage say whether Desktop can keep a design,
   whether the creature is home to be changed, whether its eyes still show against its face, and
   what has been set aside because the new body has nowhere for it.

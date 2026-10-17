@@ -8,6 +8,7 @@ use crate::notices::Level;
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke, vec2};
 use formiga_art::FRAME_SIZE;
 use formiga_art::forms::{DesignRenderer, Intent};
+use formiga_core::forms::Design;
 
 const FRAME: f32 = FRAME_SIZE as f32;
 const UV: Rect = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
@@ -64,8 +65,6 @@ impl FarmApp {
         hd: bool,
         travels: bool,
     ) -> Rect {
-        let ctx = ui.ctx().clone();
-        let points = scale / ctx.pixels_per_point();
         let design = if travels {
             crate::drawing::as_it_travels(self.shown(), &self.base)
         } else {
@@ -84,10 +83,41 @@ impl FarmApp {
             detail: if hd { crate::drawing::DETAIL } else { 1 },
             travels,
         };
-        let baseline = DesignRenderer::resting_baseline(&design, &self.base, self.reduce_motion());
+        self.paint_figure(ui, &design, key, x, floor, scale)
+    }
+
+    /// The design shown beside the workbench's to compare, drawn as the workbench's is on the
+    /// stage, at `scale`, standing on `floor` and centred on `x`.
+    fn compared_figure(&mut self, ui: &egui::Ui, design: &Design, x: f32, floor: f32, scale: f32) {
+        let key = FrameKey {
+            design: super::pictures::COMPARED,
+            intent: self.intent,
+            frame: self.frame_now(),
+            facing_right: self.facing_right,
+            outlined: false,
+            detail: if self.grid { 1 } else { crate::drawing::DETAIL },
+            travels: false,
+        };
+        self.paint_figure(ui, design, key, x, floor, scale);
+    }
+
+    /// Draw `design`'s frame named by `key`, `scale` physical pixels to an art pixel, standing
+    /// with its ground row on `floor`, centred on `x`. Returns where the frame went.
+    fn paint_figure(
+        &mut self,
+        ui: &egui::Ui,
+        design: &Design,
+        key: FrameKey,
+        x: f32,
+        floor: f32,
+        scale: f32,
+    ) -> Rect {
+        let ctx = ui.ctx().clone();
+        let points = scale / ctx.pixels_per_point();
+        let baseline = DesignRenderer::resting_baseline(design, &self.base, self.reduce_motion());
         let texture = self.pictures.frame(
             &ctx,
-            &design,
+            design,
             &self.base,
             key,
             self.editor.changes,
@@ -122,9 +152,16 @@ impl FarmApp {
                     Stroke::new(3.0, ink.stage_edge),
                     egui::StrokeKind::Inside,
                 );
-                let scale = ((chamber.height() * ppp * 0.78) / FRAME)
+                let compared = self.compare.clone();
+                let room_for = if compared.is_some() { 0.5 } else { 0.78 };
+                let scale = ((chamber.height() * ppp * room_for) / FRAME)
                     .floor()
                     .clamp(2.0, 14.0);
+                let x = if compared.is_some() {
+                    chamber.center().x + size * 0.22
+                } else {
+                    chamber.center().x
+                };
                 let floor = chamber.max.y - chamber.height() * 0.14;
                 // The floor of the chamber.
                 ui.painter().line_segment(
@@ -134,15 +171,20 @@ impl FarmApp {
                     ],
                     Stroke::new(2.0, ink.stage_edge),
                 );
-                let rect = self.figure(
-                    ui,
-                    chamber.center().x,
-                    floor,
-                    scale,
-                    false,
-                    !self.grid,
-                    false,
-                );
+                let rect = self.figure(ui, x, floor, scale, false, !self.grid, false);
+                if let Some((name, design)) = &compared {
+                    let other = chamber.center().x - size * 0.22;
+                    self.compared_figure(ui, design, other, floor, scale);
+                    for (at, label) in [(other, name.as_str()), (x, "Workbench")] {
+                        ui.painter().text(
+                            Pos2::new(at, floor + 10.0),
+                            egui::Align2::CENTER_TOP,
+                            label,
+                            egui::TextStyle::Body.resolve(ui.style()),
+                            ink.faint,
+                        );
+                    }
+                }
                 if self.grid {
                     let pixel = scale / ppp;
                     let line = Stroke::new(1.0, ink.line.gamma_multiply(0.35));
@@ -367,6 +409,17 @@ impl FarmApp {
                 .clicked()
             {
                 self.before = !self.before;
+            }
+            if let Some((name, _)) = &self.compare
+                && ui
+                    .button(format!("Stop comparing with {name}"))
+                    .on_hover_text(
+                        "Compare any draft or preset from its \u{2026} menu on the shelves.",
+                    )
+                    .clicked()
+            {
+                self.compare = None;
+                self.pictures.forget_compared();
             }
         });
         ui.horizontal_wrapped(|ui| {
