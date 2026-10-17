@@ -204,6 +204,28 @@ impl FarmApp {
             )
             .on_hover_text("The last roll's number, so a roll can be told apart from another.");
         });
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Roll everything")
+                .on_hover_text(
+                    "Roll a new body and every layer at once, but what is ticked to keep. It undoes as one.",
+                )
+                .clicked()
+            {
+                self.seed = self.seed.wrapping_mul(1_103_515_245).wrapping_add(12_345) % 100_000;
+                self.editor.roll_all(self.locks, self.seed);
+            }
+            ui.label(egui::RichText::new("Keeping").small().color(ink.faint));
+            ui.checkbox(&mut self.locks.body, "Body")
+                .on_hover_text("Keep the body: which plan, or which of Desktop's bodies.");
+            for layer in Layer::ALL {
+                ui.checkbox(self.locks.keep(layer), layer.label())
+                    .on_hover_text(format!(
+                        "Keep {} as it is when rolling everything.",
+                        layer.label().to_lowercase()
+                    ));
+            }
+        });
         ui.separator();
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])

@@ -132,6 +132,8 @@ pub struct FarmApp {
     before: bool,
     grid: bool,
     seed: u32,
+    /// What "Roll everything" leaves as it is.
+    locks: crate::editor::Locks,
     pending: Option<(u32, f64)>,
     expected_revision: Option<String>,
     dialog: Option<Dialog>,
@@ -230,6 +232,7 @@ impl FarmApp {
             before: false,
             grid: false,
             seed: 1,
+            locks: crate::editor::Locks::default(),
             pending: None,
             expected_revision,
             dialog: None,
