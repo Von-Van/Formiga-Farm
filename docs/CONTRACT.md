@@ -94,7 +94,8 @@ All in `crates/formiga-farm/src/session.rs`:
    is trusted. The snapshot is read with a size limit, its header checked first, then shaped and
    validated, and the creature's look checked as drawable. `ack.json` is written once. A Farm
    window holds `open.lock` in its data folder, so a session that arrives while another is open
-   is refused as `busy`. A second window on the same session carries on from the last serial.
+   is refused as `busy`. A second window on the same session carries on from the last serial
+   in `proposal.json` or `verdict.json`, whichever is higher.
 2. **Work.** Every change is kept in a local draft as the owner pauses, so a crash loses
    nothing. Nothing is written to the session.
 3. **Apply.** The design is written as a proposal. Farm watches for the verdict on that serial.

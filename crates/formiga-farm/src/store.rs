@@ -11,6 +11,7 @@ use formiga_forms::Design;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use time::OffsetDateTime;
 
 /// Farm's data folder: `FORMIGA_FARM_DATA_DIR` if it is set, for development and tests.
@@ -205,22 +206,32 @@ impl Store {
         self.data.as_ref().map(|data| data.join(name))
     }
 
-    /// Every draft that reads, newest first. One that does not is set aside.
+    /// The newest drafts that read, newest first, as many as the shelf holds. One that does not
+    /// read is set aside.
     pub fn drafts(&self) -> Vec<Draft> {
-        let mut drafts: Vec<Draft> = read_all(self.dir(DRAFTS), MAX_DRAFTS, Draft::valid);
+        let mut drafts = self.every_draft();
+        drafts.truncate(MAX_DRAFTS);
+        drafts
+    }
+
+    /// Every draft that reads, newest first, with any past the shelf's bound still among them,
+    /// so that [`Self::save_draft`] can see which to clear away.
+    fn every_draft(&self) -> Vec<Draft> {
+        let mut drafts: Vec<Draft> = read_all(self.dir(DRAFTS), MAX_DRAFTS * 2, Draft::valid);
         drafts.sort_by(|a, b| b.saved_at_utc.cmp(&a.saved_at_utc).then(a.id.cmp(&b.id)));
         drafts
     }
 
     pub fn presets(&self) -> Vec<PersonalPreset> {
         let mut presets: Vec<PersonalPreset> =
-            read_all(self.dir(PRESETS), MAX_PRESETS, PersonalPreset::valid);
+            read_all(self.dir(PRESETS), MAX_PRESETS * 2, PersonalPreset::valid);
         presets.sort_by(|a, b| {
             a.name
                 .to_lowercase()
                 .cmp(&b.name.to_lowercase())
                 .then(a.id.cmp(&b.id))
         });
+        presets.truncate(MAX_PRESETS);
         presets
     }
 
@@ -228,10 +239,12 @@ impl Store {
     pub fn save_draft(&self, draft: &mut Draft) -> std::io::Result<()> {
         draft.saved_at_utc = now();
         write(self.dir(DRAFTS), &draft.id, draft)?;
-        // Keep the shelf to its bound: the oldest go first.
-        let drafts = self.drafts();
-        for old in drafts.iter().skip(MAX_DRAFTS) {
-            self.delete_draft(&old.id);
+        // Keep the shelf to its bound: the oldest go first, and never the one just kept, whatever
+        // the clock said when the others were.
+        for old in self.every_draft().iter().skip(MAX_DRAFTS) {
+            if old.id != draft.id {
+                self.delete_draft(&old.id);
+            }
         }
         Ok(())
     }
@@ -278,9 +291,11 @@ fn delete(dir: Option<PathBuf>, id: &str) {
     }
 }
 
+/// What reads of the `most` files in `dir` written last. Those are read rather than the first by
+/// name, so the file just written is always among them, however many others there are.
 fn read_all<T: for<'de> Deserialize<'de>>(
     dir: Option<PathBuf>,
-    limit: usize,
+    most: usize,
     valid: fn(&T) -> bool,
 ) -> Vec<T> {
     let Some(dir) = dir else {
@@ -289,10 +304,13 @@ fn read_all<T: for<'de> Deserialize<'de>>(
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return Vec::new();
     };
-    let mut paths: Vec<PathBuf> = entries
+    let mut paths: Vec<(Option<SystemTime>, PathBuf)> = entries
         .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
+        .map(|entry| {
+            let written = entry.metadata().and_then(|meta| meta.modified()).ok();
+            (written, entry.path())
+        })
+        .filter(|(_, path)| {
             path.extension().is_some_and(|ext| ext == "json")
                 && path
                     .file_stem()
@@ -300,9 +318,9 @@ fn read_all<T: for<'de> Deserialize<'de>>(
                     .is_some_and(is_id)
         })
         .collect();
-    paths.sort();
+    paths.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let mut kept = Vec::new();
-    for path in paths.into_iter().take(limit * 2) {
+    for (_, path) in paths.into_iter().take(most) {
         let read = formiga_farm_contract::read_bounded(&path, MAX_FILE_BYTES)
             .ok()
             .and_then(|bytes| serde_json::from_slice::<T>(&bytes).ok())
@@ -310,9 +328,6 @@ fn read_all<T: for<'de> Deserialize<'de>>(
         match read {
             Some(value) => kept.push(value),
             None => set_aside(&path),
-        }
-        if kept.len() >= limit {
-            break;
         }
     }
     kept
@@ -402,6 +417,57 @@ mod tests {
         assert!(!bad.exists() && !odd_path.exists(), "both set aside");
         let aside = std::fs::read_dir(dir.join(DRAFTS)).unwrap().count();
         assert_eq!(aside, 3, "kept, not deleted");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_full_shelf_of_drafts_lets_the_oldest_go_and_always_shows_the_one_just_kept() {
+        let dir = scratch("full");
+        let store = Store::new(Some(dir.clone()));
+        // A full shelf, kept an hour ago, oldest last, by ids that all sort before the new one's.
+        let an_hour_ago = now() - time::Duration::hours(1);
+        for index in 0..MAX_DRAFTS {
+            let mut old = Draft::new("Old", crate::presets::blank(), None, None);
+            old.id = format!("{index:016x}");
+            old.saved_at_utc = an_hour_ago - time::Duration::seconds(index as i64);
+            write(store.dir(DRAFTS), &old.id, &old).unwrap();
+        }
+        let mut draft = Draft::new("New", crate::presets::blank(), None, None);
+        draft.id = "ffffffffffffffff".into();
+        store.save_draft(&mut draft).unwrap();
+        let drafts = store.drafts();
+        assert_eq!(drafts.len(), MAX_DRAFTS);
+        assert_eq!(drafts[0], draft, "the one just kept is on the shelf, first");
+        let oldest = format!("{:016x}", MAX_DRAFTS - 1);
+        assert!(drafts.iter().all(|kept| kept.id != oldest));
+        let files = std::fs::read_dir(dir.join(DRAFTS)).unwrap().count();
+        assert_eq!(files, MAX_DRAFTS, "the oldest is cleared away");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_draft_just_kept_is_on_the_shelf_however_many_older_files_there_are() {
+        let dir = scratch("backlog");
+        let store = Store::new(Some(dir.clone()));
+        // More files than are ever read at once, all written well before, by ids that sort
+        // before the new one's.
+        let an_hour_ago = SystemTime::now() - std::time::Duration::from_secs(3600);
+        for index in 0..MAX_DRAFTS * 3 {
+            let mut old = Draft::new("Old", crate::presets::blank(), None, None);
+            old.id = format!("{index:016x}");
+            old.saved_at_utc = now() - time::Duration::hours(1);
+            write(store.dir(DRAFTS), &old.id, &old).unwrap();
+            let path = dir.join(DRAFTS).join(format!("{}.json", old.id));
+            File::options()
+                .write(true)
+                .open(path)
+                .and_then(|file| file.set_modified(an_hour_ago))
+                .unwrap();
+        }
+        let mut draft = Draft::new("New", crate::presets::blank(), None, None);
+        draft.id = "ffffffffffffffff".into();
+        store.save_draft(&mut draft).unwrap();
+        assert_eq!(store.drafts()[0], draft);
         let _ = std::fs::remove_dir_all(dir);
     }
 
