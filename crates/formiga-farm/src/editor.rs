@@ -72,10 +72,14 @@ impl Dice {
     }
 }
 
+/// One state of the workbench that undo goes back to: the design, and the parts set aside from
+/// it, so that undoing a change of body takes back what it set aside along with it.
+type Step = (Design, Vec<Part>);
+
 pub struct Editor {
     design: Design,
-    undo: Vec<Design>,
-    redo: Vec<Design>,
+    undo: Vec<Step>,
+    redo: Vec<Step>,
     /// The change in progress, if a slider is being dragged: further changes under the same key
     /// are part of it, not new ones.
     gesture: Option<String>,
@@ -86,7 +90,8 @@ pub struct Editor {
     pub start: Design,
     /// The preset it was last started from, for its lineage.
     pub preset: Option<String>,
-    /// Parts the body has no slot for, kept for if it changes back.
+    /// Parts the body has no slot for, kept for if it changes back. Undone and redone with the
+    /// design.
     set_aside: Vec<Part>,
     /// Bumped on every change, so pictures of the design know when to be redrawn.
     pub changes: u64,
@@ -123,15 +128,22 @@ impl Editor {
     /// Change the design. `key` names a gesture (a slider being dragged, say): changes with the
     /// same key, one after another, undo as one.
     pub fn edit(&mut self, key: Option<&str>, change: impl FnOnce(&mut Design)) {
+        self.change(key, |design, _| change(design));
+    }
+
+    /// Change the design and the parts set aside from it together, as one change.
+    fn change(&mut self, key: Option<&str>, change: impl FnOnce(&mut Design, &mut Vec<Part>)) {
         let mut next = self.design.clone();
-        change(&mut next);
+        let mut set_aside = self.set_aside.clone();
+        change(&mut next, &mut set_aside);
         let next = next.normalized();
-        if next == self.design {
+        if next == self.design && set_aside == self.set_aside {
             return;
         }
         let continuing = key.is_some() && self.gesture.as_deref() == key;
         if !continuing {
-            self.undo.push(self.design.clone());
+            self.undo
+                .push((self.design.clone(), self.set_aside.clone()));
             if self.undo.len() > HISTORY {
                 self.undo.remove(0);
             }
@@ -139,7 +151,16 @@ impl Editor {
         self.gesture = key.map(str::to_owned);
         self.redo.clear();
         self.design = next;
+        self.set_aside = set_aside;
         self.changes += 1;
+    }
+
+    /// The workbench as it is, swapped for `step`.
+    fn swap(&mut self, (design, set_aside): Step) -> Step {
+        (
+            std::mem::replace(&mut self.design, design),
+            std::mem::replace(&mut self.set_aside, set_aside),
+        )
     }
 
     /// The gesture in progress is over: the next change is a new one.
@@ -149,8 +170,8 @@ impl Editor {
 
     pub fn undo(&mut self) {
         if let Some(previous) = self.undo.pop() {
-            self.redo
-                .push(std::mem::replace(&mut self.design, previous));
+            let now = self.swap(previous);
+            self.redo.push(now);
             self.gesture = None;
             self.changes += 1;
         }
@@ -158,7 +179,8 @@ impl Editor {
 
     pub fn redo(&mut self) {
         if let Some(next) = self.redo.pop() {
-            self.undo.push(std::mem::replace(&mut self.design, next));
+            let now = self.swap(next);
+            self.undo.push(now);
             self.gesture = None;
             self.changes += 1;
         }
@@ -169,22 +191,28 @@ impl Editor {
         let design = design.normalized();
         self.start = design.clone();
         self.preset = preset;
-        self.set_aside.clear();
-        self.edit(None, |d| *d = design);
+        self.change(None, |d, set_aside| {
+            *d = design;
+            set_aside.clear();
+        });
     }
 
     /// Put the design back as it was when the session opened.
     pub fn restore_arrival(&mut self) {
         let arrival = self.arrival.clone();
-        self.set_aside.clear();
-        self.edit(None, |d| *d = arrival);
+        self.change(None, |d, set_aside| {
+            *d = arrival;
+            set_aside.clear();
+        });
     }
 
     /// Put back the design it was last started from.
     pub fn reset_to_start(&mut self) {
         let start = self.start.clone();
-        self.set_aside.clear();
-        self.edit(None, |d| *d = start);
+        self.change(None, |d, set_aside| {
+            *d = start;
+            set_aside.clear();
+        });
     }
 
     /// Put one layer back as it was started, leaving the rest. Where the design has since
@@ -245,8 +273,7 @@ impl Editor {
     /// and any set aside earlier that fit it again come back. A companion or an original look
     /// becomes a sculpted form in its colours.
     pub fn set_plan(&mut self, plan: Plan) {
-        let mut set_aside = std::mem::take(&mut self.set_aside);
-        self.edit(None, |d| {
+        self.change(None, |d, set_aside| {
             let sculpt = match &d.form {
                 Form::Sculpted { sculpt } => {
                     let mut sculpt = sculpt.clone();
@@ -288,7 +315,6 @@ impl Editor {
             }
             d.form = Form::Sculpted { sculpt };
         });
-        self.set_aside = set_aside;
     }
 
     /// Put the design on one of Desktop's companion plans, as a recipe.
@@ -587,6 +613,50 @@ mod tests {
             Some(PartKind::FeetPaws)
         );
         assert!(editor.set_aside().is_empty());
+    }
+
+    #[test]
+    fn undoing_a_change_of_body_puts_back_what_was_set_aside_as_it_was() {
+        let paws = |editor: &Editor| {
+            editor
+                .design()
+                .form
+                .sculpt()
+                .unwrap()
+                .part(Slot::Feet)
+                .map(|p| p.kind)
+        };
+        // Undone, the floater's set-aside paws are back on the body, and not also said to be
+        // set aside; redone, they are set aside again.
+        let mut editor = Editor::new(panda(), None);
+        editor.set_plan(Plan::Floater);
+        editor.undo();
+        assert_eq!(paws(&editor), Some(PartKind::FeetPaws));
+        assert!(editor.set_aside().is_empty());
+        editor.redo();
+        assert_eq!(paws(&editor), None);
+        assert_eq!(editor.set_aside().len(), 1);
+
+        // Starting again clears what was set aside, and undoing that brings it back, so the
+        // paws still return when the body does.
+        let mut editor = Editor::new(panda(), None);
+        editor.set_plan(Plan::Floater);
+        editor.restore_arrival();
+        editor.undo();
+        editor.set_plan(Plan::CompactQuadruped);
+        assert_eq!(paws(&editor), Some(PartKind::FeetPaws));
+
+        // Feet taken off on purpose stay off when the body changes again.
+        let mut editor = Editor::new(panda(), None);
+        editor.set_plan(Plan::Floater);
+        editor.undo();
+        editor.edit(None, |d| {
+            if let Form::Sculpted { sculpt } = &mut d.form {
+                sculpt.remove(Slot::Feet);
+            }
+        });
+        editor.set_plan(Plan::TallQuadruped);
+        assert_eq!(paws(&editor), None);
     }
 
     #[test]
