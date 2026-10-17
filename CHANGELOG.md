@@ -11,8 +11,15 @@ one from your colony, over an underground ant farm. It hands each look to Formig
 decides whether to keep it, and it never changes a creature's name, nature, friends or story.
 
 - Formiga Desktop 0.67.6 opens Farm from a companion's notebook page ("Reshape in Formiga
-  Farm") and from the studio ("Draw one in Formiga Farm"). Farm is built on Desktop 0.67.5's
-  shared crates, and draws every creature exactly as Desktop does.
+  Farm") and from the studio ("Draw one in Formiga Farm"). Farm is built on Desktop 0.67.14's
+  own design model, renderer and Farm contract, draws every creature exactly as Desktop does, and
+  rehearses with any colony saved by Desktop up to 0.67.14.
+- A new Formiga drawn in Farm waits in Desktop's studio to be adopted and named.
+- Formiga Hill and Home can't draw sculpted bodies yet, so a creature with one visits them as its
+  nearest companion body, in its colours. Farm's Home and Hill previews show it exactly that way
+  and say so.
+- The drafts shelf holds 64. When it is full it says so before the next new draft lets the
+  oldest go, and names the draft it let go.
 - A look can be shared as a design code: **Copy code** puts the look on the workbench on the
   clipboard as one line of text, and **From a design code** starts from one someone sends you. A
   code holds only a look and its name, never anyone in the colony, and Farm refuses any code it
@@ -21,5 +28,7 @@ decides whether to keep it, and it never changes a creature's name, nature, frie
   white-tipped brush, plus seven sculpted body forms and Desktop's five companion bodies.
 - Farm comes as a universal Mac app, in a disk image and a zip, and for Windows as an installer and
   a portable zip, each with a checksum. Once installed, Formiga Desktop finds Farm on its own.
+  A signed build notarises the app itself, so the zip opens without a warning as well as the disk
+  image; until builds are signed, open it the first time with Control-click → Open.
 - Farm has its own icon: a slice of the ant farm in its wooden frame, with a Formiga sitting on
   the grass above the tunnels. The window, the Mac app and the Windows installer all wear it.

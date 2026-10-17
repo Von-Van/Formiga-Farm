@@ -43,7 +43,9 @@ creature stands large and alive while you change it.
   one of its expressions. It also shows it at its own size on a desktop, on a floor in Formiga
   Home, and out on the grass of Formiga Hill. Before and after is one key away.
 - **Nothing lost.** Every change can be undone. Drafts are kept as you work and come back after
-  Farm closes, even after a crash. Looks you like can be kept on your own shelf as presets.
+  Farm closes, even after a crash. The drafts shelf holds 64; when it is full it says so before
+  the next new draft lets the oldest go, and names the one it let go. Looks you like can be kept
+  on your own shelf as presets, which are never let go.
 - **Said before, not after.** Notes under the stage say whether Desktop can keep a design,
   whether the creature is home to be changed, whether its eyes still show against its face, and
   what has been set aside because the new body has nowhere for it.
@@ -55,7 +57,30 @@ individual with a new body: the same name, temperament, family, habits, friendsh
 Farm never reads or writes the colony's save file. It hands Desktop a design, and Desktop checks
 it and keeps it or not. If the creature changed in Desktop while you worked, Desktop says so and
 nothing is overwritten; if Farm crashes, the creature simply keeps the look it had. A new Formiga
-is only a design until Desktop welcomes it and you name it there.
+is only a design until you adopt it in Desktop's studio and give it a name there.
+
+Formiga Hill and Home draw a creature from what Desktop sends on a trip, and a trip leaves a
+sculpted body behind: there, a creature with one visits as the companion body nearest its own,
+in its colours. Farm's Home and Hill previews show it exactly that way, and say so.
+
+## Getting Farm
+
+1. Farm's downloads are published on this repository's
+   [Releases page](https://github.com/Von-Van/Formiga-Farm/releases) when a version is released;
+   Farm is not on formigaworld.com yet. On macOS 14 or later there is a universal app, as a disk
+   image or a zip. On Windows 10 or 11 there is a per-user installer, which puts Farm where
+   Formiga Desktop looks for it, or a portable zip, which runs without installing but which
+   Desktop does not look for. Each download has a `.sha256` checksum beside it.
+2. On macOS, drag Formiga Farm into Applications. On Windows, run the installer.
+3. In Formiga Desktop (0.67.6 or later), open a companion's page in the notebook and choose
+   "Reshape in Formiga Farm", or open the studio and choose "Draw one in Formiga Farm". Desktop
+   finds Farm on its own once it is installed.
+
+The downloads are not signed yet. On macOS, open the app the first time with Control-click → Open;
+on Windows, SmartScreen may ask before it runs.
+
+Opened on its own, rather than from Desktop, Farm rehearses with Desktop's sample colony, and
+nothing you apply there leaves its window.
 
 The agreement between the two apps is written up in [docs/CONTRACT.md](docs/CONTRACT.md).
 
@@ -76,8 +101,8 @@ would. What a rehearsal keeps lasts as long as the window.
 | Drafts, personal presets, crash recovery | Preview |
 | Previews on the desktop, in Home and on the Hill | Preview |
 | Opening Farm from Desktop's notebook and studio | Formiga Desktop 0.67.6 |
-| Packaging for macOS | A universal `Formiga Farm.app` with the bundle id and Farm version Desktop looks for, a zip and a disk image, each with its checksum. Not yet run on a Mac |
-| Packaging for Windows | A per-user installer that writes the registry values Desktop reads, and a portable zip, each with its checksum. Not yet run on Windows |
+| Packaging for macOS | A universal `Formiga Farm.app` with the bundle id and Farm version Desktop looks for, a zip and a disk image, each with its checksum. Built on GitHub's macOS machines for every packaging change; not yet released |
+| Packaging for Windows | A per-user installer that writes the registry values Desktop reads, and a portable zip, each with its checksum. Built on GitHub's Windows machines for every packaging change; not yet released |
 
 ## Running it
 
