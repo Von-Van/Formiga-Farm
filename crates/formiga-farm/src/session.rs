@@ -93,10 +93,17 @@ pub fn arrive(dir: &Path, busy: bool) -> Result<(Visit, FarmSnapshot)> {
         return refuse(AckRefusal::Invalid, format!("the snapshot: {error}"));
     }
     write_document(&dir.join(ACK_FILE), &FarmAck::accepted(&seal, FARM_VERSION))?;
-    // Carry on from any proposal an earlier window of this session already made.
-    let serial = read_document::<FarmProposal>(&dir.join(PROPOSAL_FILE))
+    // Carry on from any proposal an earlier window of this session already made, or from
+    // Desktop's verdict on one, if the proposal itself cannot be read: Desktop takes a proposal
+    // no newer than the last it answered as no news, so the next must be newer than both.
+    let proposed = read_document::<FarmProposal>(&dir.join(PROPOSAL_FILE))
         .map(|(proposal, _)| proposal.serial)
         .unwrap_or(0);
+    let answered = read_document::<FarmVerdict>(&dir.join(VERDICT_FILE))
+        .ok()
+        .filter(|(verdict, _)| verdict.answers(&seal, verdict.serial))
+        .map_or(0, |(verdict, _)| verdict.serial);
+    let serial = proposed.max(answered);
     Ok((
         Visit {
             dir: dir.to_owned(),
@@ -401,6 +408,55 @@ mod tests {
         )
         .unwrap();
         assert_eq!(again.listen(None), Heard::Recalled);
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    #[test]
+    fn a_second_window_proposes_past_the_last_verdict_even_when_the_proposal_is_gone() {
+        let snapshot = formiga_farm_contract::sample::edit_snapshot(0);
+        let dir = scratch_session(&snapshot);
+        let (visit, _) = arrive(&dir, false).unwrap();
+        let mut host = Host::Desktop(visit);
+        let creature = snapshot.creature().unwrap();
+        let design = creature.design().unwrap();
+        let kind = ProposalKind::EditExisting {
+            target: creature.id,
+            expected_revision: creature.revision.clone(),
+        };
+        for _ in 0..2 {
+            host.propose(&snapshot, kind.clone(), &design, Lineage::default())
+                .unwrap();
+        }
+        let seal = SessionSeal::of(&snapshot, &encode(&snapshot).unwrap());
+        let verdict = FarmVerdict::new(&seal, 2, now(), Verdict::Unavailable);
+        write_document(&dir.join(VERDICT_FILE), &verdict).unwrap();
+        // The proposal cannot be read any more: Desktop has still answered serial 2, and takes
+        // anything no newer as no news.
+        std::fs::write(dir.join(PROPOSAL_FILE), b"{ not a proposal").unwrap();
+        let (visit, _) = arrive(&dir, false).unwrap();
+        let mut again = Host::Desktop(visit);
+        assert_eq!(
+            again
+                .propose(&snapshot, kind.clone(), &design, Lineage::default())
+                .unwrap(),
+            3
+        );
+        // A verdict sealed to another session says nothing about this one's serials.
+        std::fs::remove_file(dir.join(PROPOSAL_FILE)).unwrap();
+        let other = SessionSeal {
+            snapshot_sha256: "0".repeat(64),
+            ..seal
+        };
+        let stray = FarmVerdict::new(&other, 40, now(), Verdict::Unavailable);
+        write_document(&dir.join(VERDICT_FILE), &stray).unwrap();
+        let (visit, _) = arrive(&dir, false).unwrap();
+        let mut fresh = Host::Desktop(visit);
+        assert_eq!(
+            fresh
+                .propose(&snapshot, kind, &design, Lineage::default())
+                .unwrap(),
+            1
+        );
         let _ = std::fs::remove_dir_all(dir.parent().unwrap());
     }
 
