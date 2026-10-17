@@ -1,5 +1,5 @@
-//! What Farm keeps of its own, in its own data folder: drafts, personal presets, where the
-//! window was, and a lock that says a window is open. None of it is the colony's: deleting a
+//! What Farm keeps of its own, in its own data folder: drafts, personal presets, the owner's
+//! palettes, where the window was, and a lock that says a window is open. None of it is the colony's: deleting a
 //! draft or a preset never touches a creature, and nothing here is read by Desktop.
 //!
 //! Every file is written whole and atomically, read with a size limit, and checked as it is read.
@@ -26,12 +26,15 @@ pub fn folder() -> Option<PathBuf> {
 const LOCK: &str = "open.lock";
 const DRAFTS: &str = "drafts";
 const PRESETS: &str = "presets";
+const PALETTES: &str = "palettes";
 const WINDOW: &str = "window.json";
 
 /// The most drafts and personal presets kept, each: plenty for anyone, and a bound on what is
 /// read at start.
 pub const MAX_DRAFTS: usize = 64;
 pub const MAX_PRESETS: usize = 64;
+/// The most palettes the owner keeps.
+pub const MAX_PALETTES: usize = 32;
 
 /// The largest a draft or preset file may be.
 const MAX_FILE_BYTES: u64 = 64 * 1024;
@@ -41,6 +44,7 @@ pub const MAX_NAME_CHARS: usize = formiga_farm_contract::limits::MAX_DRAFT_NAME_
 
 const DRAFT_FORMAT: &str = "formiga.farm.draft";
 const PRESET_FORMAT: &str = "formiga.farm.preset";
+const PALETTE_FORMAT: &str = "formiga.farm.palette";
 const VERSION: u32 = 1;
 
 /// Held for as long as a Farm window is open. The lock is the operating system's, so it goes with
@@ -102,6 +106,41 @@ pub struct PersonalPreset {
     pub design: Design,
     #[serde(with = "time::serde::rfc3339")]
     pub saved_at_utc: OffsetDateTime,
+}
+
+/// Colours the owner keeps to put on another design, by a name they gave it (see
+/// [`crate::palettes`]). Only colours: nothing about a body or anyone in the colony.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Palette {
+    pub format: String,
+    pub version: u32,
+    pub id: String,
+    pub name: String,
+    pub colors: Vec<[u8; 3]>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub saved_at_utc: OffsetDateTime,
+}
+
+impl Palette {
+    pub fn new(name: &str, colors: Vec<[u8; 3]>) -> Self {
+        Self {
+            format: PALETTE_FORMAT.to_owned(),
+            version: VERSION,
+            id: new_id(),
+            name: clean_name(name, "My colours"),
+            colors,
+            saved_at_utc: now(),
+        }
+    }
+
+    fn valid(&self) -> bool {
+        self.format == PALETTE_FORMAT
+            && self.version >= 1
+            && is_id(&self.id)
+            && formiga_travel::is_sanitized(&self.name, MAX_NAME_CHARS)
+            && !self.name.is_empty()
+            && (1..=crate::palettes::MAX_COLORS).contains(&self.colors.len())
+    }
 }
 
 /// A fresh identifier for a draft or preset.
@@ -235,18 +274,72 @@ impl Store {
         presets
     }
 
-    /// Keep `draft`, whole, stamped with the time.
-    pub fn save_draft(&self, draft: &mut Draft) -> std::io::Result<()> {
+    /// The owner's palettes, newest first, as many as are kept. One that does not read is set
+    /// aside.
+    pub fn palettes(&self) -> Vec<Palette> {
+        let mut palettes: Vec<Palette> =
+            read_all(self.dir(PALETTES), MAX_PALETTES * 2, Palette::valid);
+        palettes.sort_by(|a, b| b.saved_at_utc.cmp(&a.saved_at_utc).then(a.id.cmp(&b.id)));
+        palettes.truncate(MAX_PALETTES);
+        palettes
+    }
+
+    pub fn save_palette(&self, palette: &Palette) -> std::io::Result<()> {
+        if !palette.valid() {
+            return Err(std::io::Error::other("those colours cannot be kept"));
+        }
+        if self.palettes().len() >= MAX_PALETTES {
+            return Err(std::io::Error::other(
+                "the palettes are full; delete one to keep another",
+            ));
+        }
+        write(self.dir(PALETTES), &palette.id, palette)
+    }
+
+    pub fn delete_palette(&self, id: &str) {
+        delete(self.dir(PALETTES), id);
+    }
+
+    /// Keep `draft`, whole, stamped with the time. Returns the drafts let go to keep the shelf
+    /// to its bound, so the owner can be told which; nothing is let go without a word.
+    pub fn save_draft(&self, draft: &mut Draft) -> std::io::Result<Vec<Draft>> {
         draft.saved_at_utc = now();
         write(self.dir(DRAFTS), &draft.id, draft)?;
         // Keep the shelf to its bound: the oldest go first, and never the one just kept, whatever
         // the clock said when the others were.
-        for old in self.every_draft().iter().skip(MAX_DRAFTS) {
+        let mut let_go = Vec::new();
+        for old in self.every_draft().into_iter().skip(MAX_DRAFTS) {
             if old.id != draft.id {
                 self.delete_draft(&old.id);
+                let_go.push(old);
             }
         }
-        Ok(())
+        Ok(let_go)
+    }
+
+    /// Give the draft `id` a new name, leaving everything else about it, its place on the
+    /// shelf among them. Returns it as now named.
+    pub fn rename_draft(&self, id: &str, name: &str) -> std::io::Result<Draft> {
+        let mut draft = self
+            .every_draft()
+            .into_iter()
+            .find(|draft| draft.id == id)
+            .ok_or_else(|| std::io::Error::other("that draft is no longer kept"))?;
+        draft.name = clean_name(name, "Untitled");
+        write(self.dir(DRAFTS), &draft.id, &draft)?;
+        Ok(draft)
+    }
+
+    /// Give the preset `id` a new name, leaving its look as it is.
+    pub fn rename_preset(&self, id: &str, name: &str) -> std::io::Result<PersonalPreset> {
+        let mut preset = self
+            .presets()
+            .into_iter()
+            .find(|preset| preset.id == id)
+            .ok_or_else(|| std::io::Error::other("that preset is no longer kept"))?;
+        preset.name = clean_name(name, "My Formiga");
+        write(self.dir(PRESETS), &preset.id, &preset)?;
+        Ok(preset)
     }
 
     pub fn delete_draft(&self, id: &str) {
@@ -434,9 +527,15 @@ mod tests {
         }
         let mut draft = Draft::new("New", crate::presets::blank(), None, None);
         draft.id = "ffffffffffffffff".into();
-        store.save_draft(&mut draft).unwrap();
+        let let_go = store.save_draft(&mut draft).unwrap();
         let drafts = store.drafts();
         assert_eq!(drafts.len(), MAX_DRAFTS);
+        let oldest_id = format!("{:016x}", MAX_DRAFTS - 1);
+        assert_eq!(
+            let_go.iter().map(|d| d.id.as_str()).collect::<Vec<_>>(),
+            [oldest_id.as_str()],
+            "the one let go is named"
+        );
         assert_eq!(drafts[0], draft, "the one just kept is on the shelf, first");
         let oldest = format!("{:016x}", MAX_DRAFTS - 1);
         assert!(drafts.iter().all(|kept| kept.id != oldest));
@@ -468,6 +567,54 @@ mod tests {
         draft.id = "ffffffffffffffff".into();
         store.save_draft(&mut draft).unwrap();
         assert_eq!(store.drafts()[0], draft);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_palette_is_kept_read_back_and_one_that_does_not_check_out_is_set_aside() {
+        let dir = scratch("palettes");
+        let store = Store::new(Some(dir.clone()));
+        let fox =
+            crate::palettes::colors_of(&crate::presets::find("animal.red_fox").unwrap().design);
+        let palette = Palette::new("Fox", fox);
+        store.save_palette(&palette).unwrap();
+        assert_eq!(store.palettes(), std::slice::from_ref(&palette));
+        let mut odd = Palette::new("Too many", vec![[1, 2, 3]; crate::palettes::MAX_COLORS + 1]);
+        assert!(store.save_palette(&odd).is_err(), "refused as it is kept");
+        odd.colors.truncate(1);
+        odd.name.clear();
+        write(store.dir(PALETTES), &odd.id, &odd).unwrap();
+        assert_eq!(
+            store.palettes(),
+            std::slice::from_ref(&palette),
+            "and as it is read"
+        );
+        store.delete_palette(&palette.id);
+        assert!(store.palettes().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn renaming_keeps_the_look_and_the_place_on_the_shelf() {
+        let dir = scratch("rename");
+        let store = Store::new(Some(dir.clone()));
+        let fox = crate::presets::find("animal.red_fox").unwrap().design;
+        let mut older = Draft::new("Older", fox.clone(), None, None);
+        store.save_draft(&mut older).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let mut newer = Draft::new("Newer", crate::presets::blank(), None, None);
+        store.save_draft(&mut newer).unwrap();
+        let renamed = store.rename_draft(&older.id, "  Russet\n").unwrap();
+        assert_eq!(renamed.name, "Russet");
+        let drafts = store.drafts();
+        assert_eq!(drafts[1].id, older.id, "still the older of the two");
+        assert_eq!(drafts[1].design, fox);
+        let preset = PersonalPreset::new("Fox", fox.clone());
+        store.save_preset(&preset).unwrap();
+        store.rename_preset(&preset.id, "Vixen").unwrap();
+        assert_eq!(store.presets()[0].name, "Vixen");
+        assert_eq!(store.presets()[0].design, fox);
+        assert!(store.rename_preset("0000000000000000", "Nobody").is_err());
         let _ = std::fs::remove_dir_all(dir);
     }
 
