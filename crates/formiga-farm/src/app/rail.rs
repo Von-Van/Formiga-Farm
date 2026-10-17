@@ -234,12 +234,28 @@ impl FarmApp {
                             .on_hover_text("Compare, rename, copy and more");
                         });
                     });
+                    // The whole row is one button: it takes keyboard focus, Enter or Space picks
+                    // it, and a screen reader hears its name and what it is.
                     let response = ui.interact(
                         row.response.rect,
                         ui.id().with(("rail-entry", index)),
                         egui::Sense::click(),
                     );
-                    if response.hovered() {
+                    let spoken = match &entry.note {
+                        Some(note) => format!("Start from {}: {note}", entry.name),
+                        None => format!("Start from {}", entry.name),
+                    };
+                    response.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &spoken)
+                    });
+                    if response.has_focus() {
+                        ui.painter().rect_stroke(
+                            row.response.rect.expand(2.0),
+                            6.0,
+                            ui.visuals().selection.stroke,
+                            egui::StrokeKind::Outside,
+                        );
+                    } else if response.hovered() {
                         ui.painter().rect_stroke(
                             row.response.rect.expand(2.0),
                             6.0,

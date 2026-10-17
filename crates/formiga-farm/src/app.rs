@@ -134,6 +134,10 @@ pub struct FarmApp {
     before: bool,
     grid: bool,
     seed: u32,
+    /// How large text is drawn, from 1 to 1.5.
+    text_scale: f32,
+    /// Whether every note shows under the stage, rather than the first few.
+    all_notes: bool,
     /// What the creature wears in Desktop, to show on the new form, and whether it is shown.
     dress: Option<formiga_art::AccessoryArt>,
     dressed: bool,
@@ -215,6 +219,7 @@ impl FarmApp {
         let drafts = store.drafts();
         let mine = store.presets();
         let palettes = store.palettes();
+        let text_scale = style::text_scale(&snapshot.presentation);
         let dress = snapshot
             .creature()
             .and_then(|creature| creature.accessory.as_ref())
@@ -243,6 +248,8 @@ impl FarmApp {
             before: false,
             grid: false,
             seed: 1,
+            all_notes: false,
+            text_scale,
             dress,
             dressed: true,
             compare: None,
@@ -739,6 +746,23 @@ impl FarmApp {
                 }
                 if let Some(label) = self.host.label() {
                     ui.label(egui::RichText::new(label).small().color(ink.faint));
+                }
+                // With Desktop, text follows Desktop's own setting; opened on its own, Farm
+                // has a setting of its own.
+                if self.host.is_rehearsal() {
+                    ui.menu_button("Text size", |ui| {
+                        for (percent, name) in [(100, "Usual"), (125, "Larger"), (150, "Largest")] {
+                            let scale = f32::from(percent as u8) / 100.0;
+                            if ui
+                                .selectable_label((self.text_scale - scale).abs() < 0.01, name)
+                                .clicked()
+                            {
+                                self.text_scale = scale;
+                                style::apply(ui.ctx(), scale);
+                                ui.close();
+                            }
+                        }
+                    });
                 }
             });
         });

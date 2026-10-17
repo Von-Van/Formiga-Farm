@@ -135,7 +135,9 @@ read as). `--pixels` draws the presets and poses at Desktop's companion size ins
 of this page is `--render-presets docs/assets/presets.png`.
 
 Keys: ⌘Z or Ctrl+Z undoes and adding Shift redoes; ⌘S or Ctrl+S keeps the draft; B shows before
-and after; F turns round; 1 to 8 choose a pose.
+and after; F turns round; 1 to 8 choose a pose. Tab moves between controls, shelf entries included, and Enter
+or Space picks the one focused; each shelf entry tells a screen reader its name. Opened on its
+own, Farm has a Text size menu; with Desktop, text follows Desktop's setting.
 
 ### What Farm keeps on your computer
 

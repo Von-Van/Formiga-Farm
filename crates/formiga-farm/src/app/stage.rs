@@ -365,7 +365,8 @@ impl FarmApp {
     pub(super) fn strip(&mut self, ui: &mut egui::Ui) {
         let ink = style::ink(ui.visuals().dark_mode);
         let notices = self.notices().to_vec();
-        for notice in notices.iter().take(3) {
+        let shown = if self.all_notes { notices.len() } else { 3 };
+        for notice in notices.iter().take(shown) {
             let (color, mark) = match notice.level {
                 Level::Blocks => (ink.block, "\u{25cf}"),
                 Level::Warning => (ink.warn, "\u{25b2}"),
@@ -375,6 +376,16 @@ impl FarmApp {
                 ui.label(egui::RichText::new(mark).color(color));
                 ui.label(egui::RichText::new(&notice.text).color(color));
             });
+        }
+        if notices.len() > 3 {
+            let toggle = if self.all_notes {
+                "Fewer notes".to_owned()
+            } else {
+                format!("{} more notes", notices.len() - 3)
+            };
+            if ui.small_button(toggle).clicked() {
+                self.all_notes = !self.all_notes;
+            }
         }
         ui.horizontal_wrapped(|ui| {
             for intent in Intent::ALL {
