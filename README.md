@@ -36,7 +36,8 @@ creature stands large and alive while you change it.
 - **Four layers to work in.** *Form* (the body and its proportions), *Parts* (ears, snout, horns,
   tusks, mane, tail, feet, fins, back, wings and shell, each sized, tilted and coloured), *Finish*
   (the coat, its colours and up to four markings) and *Face* (one of Formiga's twelve face
-  layouts, and the eyes, brows, mouth and cheeks). Every layer can be rolled at random on its own
+  layouts, and the eyes, brows, mouth and cheeks). Parts, face layouts and the ways a marking can
+  be laid out are chosen by picture, each showing the design as it would look. Every layer can be rolled at random on its own
   or put back as it started, and **Roll everything** rolls a new body and every layer at once,
   keeping whichever of them you tick.
 - **Colours to start from.** Every colour has swatches beside it: the design's own colours and

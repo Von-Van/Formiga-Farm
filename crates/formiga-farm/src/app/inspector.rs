@@ -137,6 +137,42 @@ fn swatch_button(ui: &mut egui::Ui, rgb: [u8; 3], chosen: bool) -> egui::Respons
     response.on_hover_text(hex(rgb))
 }
 
+/// A small picture to choose by: `texture`, `size` frame pixels across, in a tile that shows
+/// whether it is the one chosen.
+fn picture_choice(
+    ui: &mut egui::Ui,
+    texture: &egui::TextureHandle,
+    size: egui::Vec2,
+    chosen: bool,
+    hover: &str,
+) -> egui::Response {
+    let ink = style::ink(ui.visuals().dark_mode);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(46.0, 46.0), egui::Sense::click());
+    let edge = if chosen {
+        egui::Stroke::new(2.0, ink.chosen)
+    } else if response.hovered() {
+        egui::Stroke::new(1.5, ink.text)
+    } else {
+        egui::Stroke::new(1.0, ink.line)
+    };
+    ui.painter()
+        .rect(rect, 5.0, ink.card, edge, egui::StrokeKind::Inside);
+    // Whole pixels only, so the picture stays crisp: as large as fits.
+    let ppp = ui.ctx().pixels_per_point();
+    let fit = ((40.0 * ppp) / size.x.max(size.y).max(1.0))
+        .floor()
+        .max(1.0)
+        / ppp;
+    let image = egui::Rect::from_center_size(rect.center(), size * fit);
+    ui.painter().image(
+        texture.id(),
+        image,
+        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
+    response.on_hover_text(hover)
+}
+
 /// A palette's colours in a row, to see at a glance.
 fn strip(ui: &mut egui::Ui, colors: &[[u8; 3]]) {
     let ink = style::ink(ui.visuals().dark_mode);
@@ -358,7 +394,7 @@ impl FarmApp {
 
     fn parts_page(&mut self, ui: &mut egui::Ui, design: &Design) {
         match &design.form {
-            Form::Sculpted { sculpt } => self.sculpt_parts(ui, sculpt),
+            Form::Sculpted { sculpt } => self.sculpt_parts(ui, design, sculpt),
             Form::Companion { recipe } => self.recipe_parts(ui, recipe),
             Form::Original => {
                 ui.label("Choose a body under Form to fit parts to it.");
@@ -366,7 +402,7 @@ impl FarmApp {
         }
     }
 
-    fn sculpt_parts(&mut self, ui: &mut egui::Ui, sculpt: &Sculpt) {
+    fn sculpt_parts(&mut self, ui: &mut egui::Ui, design: &Design, sculpt: &Sculpt) {
         let ink = style::ink(ui.visuals().dark_mode);
         for slot in Slot::ALL {
             if !sculpt.plan.has(slot) {
@@ -384,13 +420,7 @@ impl FarmApp {
                     let mut options: Vec<(Option<formiga_core::forms::PartKind>, &str)> =
                         vec![(None, "None")];
                     options.extend(slot.kinds().map(|k| (Some(k), k.label())));
-                    if choose(
-                        ui,
-                        slot.label(),
-                        &format!("slot-{slot:?}"),
-                        &mut kind,
-                        &options,
-                    ) {
+                    if self.choose_part(ui, design, slot, fitted, &mut kind, &options) {
                         self.editor.edit(None, |d| {
                             if let Form::Sculpted { sculpt } = &mut d.form {
                                 match kind {
@@ -456,6 +486,70 @@ impl FarmApp {
                     .color(ink.faint),
             );
         }
+    }
+
+    /// Which part goes in `slot`, chosen from a list that pictures the design wearing each.
+    /// Whether the choice changed.
+    fn choose_part(
+        &mut self,
+        ui: &mut egui::Ui,
+        design: &Design,
+        slot: Slot,
+        fitted: Option<Part>,
+        kind: &mut Option<formiga_core::forms::PartKind>,
+        options: &[(Option<formiga_core::forms::PartKind>, &str)],
+    ) -> bool {
+        let mut changed = false;
+        let ctx = ui.ctx().clone();
+        row(ui, slot.label(), |ui| {
+            let shown = options
+                .iter()
+                .find(|(option, _)| option == kind)
+                .map_or("", |(_, name)| *name);
+            egui::ComboBox::from_id_salt(("slot", slot))
+                .selected_text(shown)
+                .width(132.0)
+                .height(360.0)
+                .show_ui(ui, |ui| {
+                    for &(option, name) in options {
+                        let mut variant = design.clone();
+                        if let Form::Sculpted { sculpt } = &mut variant.form {
+                            match option {
+                                Some(option) => {
+                                    let ink = fitted.map_or(Ink::Primary, |p| p.ink);
+                                    let size =
+                                        fitted.map_or(formiga_core::forms::MIDDLE, |p| p.size);
+                                    sculpt.fit(Part::new(option, ink).sized(size));
+                                }
+                                None => {
+                                    sculpt.remove(slot);
+                                }
+                            }
+                        }
+                        let (texture, size) = self.pictures.variant(
+                            &ctx,
+                            &format!("part-{slot:?}-{option:?}"),
+                            &variant,
+                            &self.base,
+                            self.editor.changes,
+                            false,
+                        );
+                        let picked = ui
+                            .horizontal(|ui| {
+                                let tile =
+                                    picture_choice(ui, &texture, size, *kind == option, name);
+                                let label = ui.selectable_label(*kind == option, name);
+                                tile.clicked() || label.clicked()
+                            })
+                            .inner;
+                        if picked && *kind != option {
+                            *kind = option;
+                            changed = true;
+                        }
+                    }
+                });
+        });
+        changed
     }
 
     fn recipe_parts(&mut self, ui: &mut egui::Ui, recipe: &CreatureDesign) {
@@ -584,7 +678,7 @@ impl FarmApp {
             self.palette_row(ui, design);
         }
         match &design.form {
-            Form::Sculpted { sculpt } => self.sculpt_finish(ui, sculpt, &swatches),
+            Form::Sculpted { sculpt } => self.sculpt_finish(ui, design, sculpt, &swatches),
             Form::Companion { recipe } => {
                 let mut r = *recipe;
                 let mut key = None;
@@ -735,7 +829,13 @@ impl FarmApp {
         }
     }
 
-    fn sculpt_finish(&mut self, ui: &mut egui::Ui, sculpt: &Sculpt, swatches: &[[u8; 3]]) {
+    fn sculpt_finish(
+        &mut self,
+        ui: &mut egui::Ui,
+        design: &Design,
+        sculpt: &Sculpt,
+        swatches: &[[u8; 3]],
+    ) {
         let ink = style::ink(ui.visuals().dark_mode);
         let mut coat = sculpt.coat;
         let mut key = None;
@@ -810,9 +910,49 @@ impl FarmApp {
                     if slider(ui, "Size", &mut marking.size, 0, STEPS) {
                         key = Some(format!("marking-{index}-size"));
                     }
-                    if slider(ui, "Layout", &mut marking.layout, 0, 255) {
-                        key = Some(format!("marking-{index}-layout"));
-                    }
+                    row(ui, "Layout", |ui| {
+                        if ui
+                            .button("Shuffle")
+                            .on_hover_text("Lay this marking out another way.")
+                            .clicked()
+                        {
+                            self.seed = self.seed.wrapping_mul(1_103_515_245).wrapping_add(12_345)
+                                % 100_000;
+                            marking.layout =
+                                marking.layout.wrapping_add(1 + (self.seed % 254) as u8);
+                            key = Some(format!("marking-{index}-shuffle"));
+                        }
+                        ui.label(
+                            egui::RichText::new(format!("no. {}", marking.layout))
+                                .small()
+                                .color(ink.faint),
+                        );
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        for step in 1..=4_u8 {
+                            let layout = marking.layout.wrapping_add(step.wrapping_mul(61));
+                            let mut variant = design.clone();
+                            if let Form::Sculpted { sculpt } = &mut variant.form
+                                && let Some(m) = sculpt.markings.get_mut(index)
+                            {
+                                m.layout = layout;
+                            }
+                            let (texture, size) = self.pictures.variant(
+                                ui.ctx(),
+                                &format!("marking-{index}-layout-{layout}"),
+                                &variant,
+                                &self.base,
+                                self.editor.changes,
+                                false,
+                            );
+                            if picture_choice(ui, &texture, size, false, "Lay it out like this")
+                                .clicked()
+                            {
+                                marking.layout = layout;
+                                key = Some(format!("marking-{index}-try"));
+                            }
+                        }
+                    });
                     if ui.small_button("Remove").clicked() {
                         remove = Some(index);
                     }
@@ -846,20 +986,52 @@ impl FarmApp {
         }
     }
 
+    /// Formiga's face layouts as pictures of `design` wearing each, `wear` putting one on it.
+    /// Returns the one chosen, if one was.
+    fn face_layouts(
+        &mut self,
+        ui: &mut egui::Ui,
+        design: &Design,
+        current: u8,
+        wear: impl Fn(&mut Design, u8),
+    ) -> Option<u8> {
+        let ctx = ui.ctx().clone();
+        let mut chosen = None;
+        ui.horizontal_wrapped(|ui| {
+            for template in 1..=formiga_core::FACE_TEMPLATES {
+                let mut variant = design.clone();
+                wear(&mut variant, template);
+                let (texture, size) = self.pictures.variant(
+                    &ctx,
+                    &format!("face-layout-{template}"),
+                    &variant,
+                    &self.base,
+                    self.editor.changes,
+                    true,
+                );
+                let hover = format!("Face layout {template}");
+                if picture_choice(ui, &texture, size, template == current, &hover).clicked()
+                    && template != current
+                {
+                    chosen = Some(template);
+                }
+            }
+        });
+        chosen
+    }
+
     fn face_page(&mut self, ui: &mut egui::Ui, design: &Design) {
         let ink = style::ink(ui.visuals().dark_mode);
         heading(ui, "Layout");
         match &design.form {
             Form::Sculpted { sculpt } => {
-                let mut template = sculpt.face_template;
-                if slider(
-                    ui,
-                    "Face layout",
-                    &mut template,
-                    1,
-                    formiga_core::FACE_TEMPLATES,
-                ) {
-                    self.editor.edit(Some("face-template"), |d| {
+                let chosen = self.face_layouts(ui, design, sculpt.face_template, |d, template| {
+                    if let Form::Sculpted { sculpt } = &mut d.form {
+                        sculpt.face_template = template;
+                    }
+                });
+                if let Some(template) = chosen {
+                    self.editor.edit(None, |d| {
                         if let Form::Sculpted { sculpt } = &mut d.form {
                             sculpt.face_template = template;
                         }
@@ -869,16 +1041,15 @@ impl FarmApp {
             Form::Companion { recipe } => {
                 let mut r = *recipe;
                 if r.archetype > 0 {
-                    if slider(
-                        ui,
-                        "Face layout",
-                        &mut r.face_template,
-                        1,
-                        formiga_core::FACE_TEMPLATES,
-                    ) {
-                        self.editor.edit(Some("recipe-face"), |d| {
-                            d.form = Form::Companion { recipe: r }
-                        });
+                    let chosen = self.face_layouts(ui, design, r.face_template, |d, template| {
+                        if let Form::Companion { recipe } = &mut d.form {
+                            recipe.face_template = template;
+                        }
+                    });
+                    if let Some(template) = chosen {
+                        r.face_template = template;
+                        self.editor
+                            .edit(None, |d| d.form = Form::Companion { recipe: r });
                     }
                 } else if choose(
                     ui,
