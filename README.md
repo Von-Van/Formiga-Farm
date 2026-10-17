@@ -87,8 +87,9 @@ in its colours. Farm's Home and Hill previews show it exactly that way, and say 
 The downloads are not signed yet. On macOS, open the app the first time with Control-click → Open;
 on Windows, SmartScreen may ask before it runs.
 
-Opened on its own, rather than from Desktop, Farm rehearses with Desktop's sample colony, and
-nothing you apply there leaves its window.
+Opened on its own, rather than from Desktop, Farm first says that your own companions come from
+Formiga and how to open one in Farm, then rehearses with Desktop's sample colony, and nothing you
+apply there leaves its window.
 
 The agreement between the two apps is written up in [docs/CONTRACT.md](docs/CONTRACT.md).
 
