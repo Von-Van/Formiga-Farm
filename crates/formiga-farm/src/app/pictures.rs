@@ -41,6 +41,8 @@ pub struct FrameKey {
     pub detail: u32,
     /// Drawn as Formiga Hill and Home will draw it ([`crate::drawing::as_it_travels`]).
     pub travels: bool,
+    /// Wearing what the creature wears in Desktop.
+    pub dressed: bool,
 }
 
 #[derive(Default)]
@@ -57,6 +59,7 @@ pub struct Pictures {
 
 impl Pictures {
     /// One frame of `design`, drawn if it has not been already.
+    #[allow(clippy::too_many_arguments)]
     pub fn frame(
         &mut self,
         ctx: &egui::Context,
@@ -65,6 +68,7 @@ impl Pictures {
         key: FrameKey,
         current: u64,
         reduce_motion: bool,
+        dress: Option<formiga_art::AccessoryArt>,
     ) -> egui::TextureHandle {
         if self.drawn_for != current {
             self.frames
@@ -74,31 +78,26 @@ impl Pictures {
         if let Some(texture) = self.frames.get(&key) {
             return texture.clone();
         }
-        let texture = if key.detail > 1 && drawn_hd(design) {
-            let canvas = crate::drawing::intent_frame_hd(
-                design,
-                base,
-                key.intent,
-                key.frame,
-                key.facing_right,
-                reduce_motion,
-                key.detail,
-            );
-            texture(ctx, "farm-frame", &canvas)
+        // A creature that keeps its body is Desktop's own pixels, drawn larger on screen.
+        let detail = if key.detail > 1 && drawn_hd(design) {
+            key.detail
         } else {
-            let mut canvas = DesignRenderer::intent_frame(
-                design,
-                base,
-                key.intent,
-                key.frame,
-                key.facing_right,
-                reduce_motion,
-            );
-            if key.outlined {
-                formiga_art::CreatureRenderer::outline_frame(&mut canvas);
-            }
-            texture(ctx, "farm-frame", &canvas)
+            1
         };
+        let mut canvas = crate::drawing::dressed_intent_frame(
+            design,
+            base,
+            dress.filter(|_| key.dressed),
+            key.intent,
+            key.frame,
+            key.facing_right,
+            reduce_motion,
+            detail,
+        );
+        if key.outlined && detail == 1 {
+            formiga_art::CreatureRenderer::outline_frame(&mut canvas);
+        }
+        let texture = texture(ctx, "farm-frame", &canvas);
         if self.frames.len() > 256 {
             self.frames.clear();
         }

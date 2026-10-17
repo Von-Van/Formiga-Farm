@@ -134,6 +134,9 @@ pub struct FarmApp {
     before: bool,
     grid: bool,
     seed: u32,
+    /// What the creature wears in Desktop, to show on the new form, and whether it is shown.
+    dress: Option<formiga_art::AccessoryArt>,
+    dressed: bool,
     /// A design shown beside the one on the workbench, by its name, to compare them.
     compare: Option<(String, Design)>,
     /// What "Roll everything" leaves as it is.
@@ -212,6 +215,10 @@ impl FarmApp {
         let drafts = store.drafts();
         let mine = store.presets();
         let palettes = store.palettes();
+        let dress = snapshot
+            .creature()
+            .and_then(|creature| creature.accessory.as_ref())
+            .map(formiga_travel::TravelAccessory::to_art);
         let shelf = if matches!(snapshot.mode, FarmMode::EditExisting { .. }) {
             Shelf::BodyForms
         } else {
@@ -236,6 +243,8 @@ impl FarmApp {
             before: false,
             grid: false,
             seed: 1,
+            dress,
+            dressed: true,
             compare: None,
             locks: crate::editor::Locks::default(),
             pending: None,

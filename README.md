@@ -46,7 +46,8 @@ creature stands large and alive while you change it.
 - **Seen as it will live.** The strip under the stage plays it idle, moving, reacting,
   inspecting, resting, celebrating, being social and being held, facing either way, with every
   one of its expressions. It also shows it at its own size on a desktop, on a floor in Formiga
-  Home, and out on the grass of Formiga Hill. Before and after is one key away.
+  Home, and out on the grass of Formiga Hill. Before and after is one key away. A companion
+  that wears something in Desktop wears it on the new form too, placed as Desktop will place it.
 - **Nothing lost.** Every change can be undone. Drafts are kept as you work and come back after
   Farm closes, even after a crash. The drafts shelf holds 64; when it is full it says so before
   the next new draft lets the oldest go, and names the one it let go. Looks you like can be kept

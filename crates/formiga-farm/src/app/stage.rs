@@ -82,6 +82,7 @@ impl FarmApp {
             outlined,
             detail: if hd { crate::drawing::DETAIL } else { 1 },
             travels,
+            dressed: self.dressed && self.dress.is_some(),
         };
         self.paint_figure(ui, &design, key, x, floor, scale)
     }
@@ -97,6 +98,7 @@ impl FarmApp {
             outlined: false,
             detail: if self.grid { 1 } else { crate::drawing::DETAIL },
             travels: false,
+            dressed: self.dressed && self.dress.is_some(),
         };
         self.paint_figure(ui, design, key, x, floor, scale);
     }
@@ -122,6 +124,7 @@ impl FarmApp {
             key,
             self.editor.changes,
             self.reduce_motion(),
+            self.dress,
         );
         let ground_row = FRAME - 1.0 - baseline as f32;
         let top_left = Pos2::new(
@@ -393,6 +396,13 @@ impl FarmApp {
                 .clicked()
             {
                 self.facing_right = !self.facing_right;
+            }
+            if let Some(dress) = self.dress {
+                let what = dress.accessory.label().to_lowercase();
+                ui.checkbox(&mut self.dressed, format!("Wearing their {what}"))
+                    .on_hover_text(
+                        "Show what they wear in Desktop on the new form, as Desktop will place it.",
+                    );
             }
             let changed = *self.editor.design() != self.editor.arrival;
             let label = if self.snapshot.creature().is_some() {
