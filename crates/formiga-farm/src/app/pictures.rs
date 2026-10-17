@@ -5,8 +5,9 @@
 
 use eframe::egui;
 use formiga_art::Canvas;
+use formiga_art::forms::{DesignRenderer, Intent};
 use formiga_core::AppearanceGenome;
-use formiga_forms::{Design, DesignRenderer, Form, Intent};
+use formiga_core::forms::{Design, Form};
 use std::collections::HashMap;
 
 pub fn texture(ctx: &egui::Context, name: &str, canvas: &Canvas) -> egui::TextureHandle {
@@ -64,7 +65,7 @@ impl Pictures {
             return texture.clone();
         }
         let texture = if key.detail > 1 && drawn_hd(design) {
-            let canvas = DesignRenderer::intent_frame_hd(
+            let canvas = crate::drawing::intent_frame_hd(
                 design,
                 base,
                 key.intent,
@@ -114,16 +115,16 @@ impl Pictures {
         let hd = drawn_hd(design);
         let (canvas, detail) = if hd {
             (
-                DesignRenderer::intent_frame_hd(
+                crate::drawing::intent_frame_hd(
                     design,
                     base,
                     Intent::Idle,
                     0,
                     true,
                     true,
-                    formiga_forms::DETAIL,
+                    crate::drawing::DETAIL,
                 ),
-                formiga_forms::DETAIL as f32,
+                crate::drawing::DETAIL as f32,
             )
         } else {
             (

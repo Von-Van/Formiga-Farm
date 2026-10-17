@@ -9,6 +9,7 @@
 //! unless Desktop keeps a new one.
 
 use anyhow::{Context, Result, bail};
+use formiga_core::forms::Design;
 use formiga_core::{CreatureId, SaveFile};
 use formiga_farm_contract::{
     ACK_FILE, Accepted, AckRefusal, Current, FARM_FORMAT_VERSION, FarmAck, FarmDocument, FarmError,
@@ -16,7 +17,6 @@ use formiga_farm_contract::{
     RECALL_FILE, SNAPSHOT_FILE, SessionId, SessionSeal, VERDICT_FILE, Verdict, accept_proposal,
     apply_design, decode, limits, read_bounded, read_document, sha256_hex, write_document,
 };
-use formiga_forms::{Design, Sculpt};
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 
@@ -205,7 +205,6 @@ pub struct Rehearsal {
     pub label: String,
     colony: SaveFile,
     creature: Option<CreatureId>,
-    sculpt: Option<Sculpt>,
     seal: SessionSeal,
     serial: u32,
     verdicts: Vec<(u32, Verdict)>,
@@ -237,7 +236,6 @@ impl Rehearsal {
                 let snapshot = formiga_farm_contract::project_edit(
                     &colony,
                     creature,
-                    None,
                     true,
                     session,
                     now(),
@@ -271,7 +269,6 @@ impl Rehearsal {
                 label,
                 colony,
                 creature,
-                sculpt: None,
                 seal,
                 serial: 0,
                 verdicts: Vec::new(),
@@ -305,7 +302,6 @@ impl Rehearsal {
             Some(id) => match self.colony.creatures.iter().find(|c| c.id == id) {
                 Some(creature) => Current::Creature {
                     creature,
-                    sculpt: self.sculpt.as_ref(),
                     available: true,
                 },
                 None => Current::Gone,
@@ -320,9 +316,9 @@ impl Rehearsal {
                     .iter_mut()
                     .find(|c| c.id == target)
                     .expect("accepted for a creature in the colony");
-                self.sculpt = apply_design(creature, &design);
+                apply_design(creature, &design);
                 Verdict::Kept {
-                    revision: Design::of(&creature.appearance, self.sculpt.as_ref()).revision(),
+                    revision: Design::of(&creature.appearance).revision(),
                 }
             }
             Ok(Accepted::Create { .. }) => {

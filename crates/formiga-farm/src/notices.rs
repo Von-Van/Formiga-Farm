@@ -3,9 +3,10 @@
 //! whether its eyes still show, and what has been set aside.
 
 use crate::paint::contrast;
+use formiga_art::forms::{DesignRenderer, Intent};
 use formiga_core::AppearanceGenome;
+use formiga_core::forms::{Design, Form, MarkingKind, Part, Plan, Slot};
 use formiga_farm_contract::{Availability, FarmCapability, FarmMode, FarmSnapshot};
-use formiga_forms::{Design, DesignRenderer, Form, Intent, MarkingKind, Part, Plan, Slot};
 
 /// How much a notice matters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

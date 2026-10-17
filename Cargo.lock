@@ -1198,8 +1198,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.67.5"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.5#f5173a9d418ef11b9489720c11fc253cd5e13dcb"
+version = "0.67.14"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.14#3be27a49549e7ef29d0bbbc329ff5ec8916f4b4a"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1212,8 +1212,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.67.5"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.5#f5173a9d418ef11b9489720c11fc253cd5e13dcb"
+version = "0.67.14"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.14#3be27a49549e7ef29d0bbbc329ff5ec8916f4b4a"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1228,8 +1228,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-expansion-rulebook"
-version = "0.67.5"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.5#f5173a9d418ef11b9489720c11fc253cd5e13dcb"
+version = "0.67.14"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.14#3be27a49549e7ef29d0bbbc329ff5ec8916f4b4a"
 dependencies = [
  "getrandom 0.4.3",
  "serde",
@@ -1249,7 +1249,6 @@ dependencies = [
  "formiga-art",
  "formiga-core",
  "formiga-farm-contract",
- "formiga-forms",
  "formiga-travel",
  "image",
  "png",
@@ -1261,11 +1260,11 @@ dependencies = [
 
 [[package]]
 name = "formiga-farm-contract"
-version = "0.1.0"
+version = "0.67.14"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.14#3be27a49549e7ef29d0bbbc329ff5ec8916f4b4a"
 dependencies = [
  "formiga-core",
  "formiga-expansion-rulebook",
- "formiga-forms",
  "formiga-travel",
  "serde",
  "serde_json",
@@ -1274,23 +1273,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "formiga-forms"
-version = "0.1.0"
-dependencies = [
- "formiga-art",
- "formiga-core",
- "formiga-travel",
- "png",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.21",
-]
-
-[[package]]
 name = "formiga-travel"
-version = "0.67.5"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.5#f5173a9d418ef11b9489720c11fc253cd5e13dcb"
+version = "0.67.14"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.14#3be27a49549e7ef29d0bbbc329ff5ec8916f4b4a"
 dependencies = [
  "formiga-art",
  "formiga-core",

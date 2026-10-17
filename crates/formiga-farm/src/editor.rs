@@ -3,13 +3,13 @@
 //! started or rolled at random on its own, and parts a body has no room for are set aside rather
 //! than lost.
 
+use formiga_core::forms::{
+    Coat, Design, Form, Ink, MAX_MARKINGS, Marking, MarkingKind, Part, Plan, STEPS, Sculpt, Shape,
+    Slot, Treatment,
+};
 use formiga_core::{
     BodyPlan, BrowStyle, CheekStyle, CreatureDesign, EarStyle, EyeShape, FaceGenome,
     HighlightStyle, MouthStyle, PupilStyle,
-};
-use formiga_forms::{
-    Coat, Design, Form, Ink, MAX_MARKINGS, Marking, MarkingKind, Part, Plan, STEPS, Sculpt, Shape,
-    Slot, Treatment,
 };
 
 /// How many changes can be undone.
@@ -378,7 +378,7 @@ fn shade(rgb: [u8; 3]) -> [u8; 3] {
 }
 
 fn roll_shape(shape: &mut Shape, dice: &mut Dice) {
-    for dimension in formiga_forms::Dimension::ALL {
+    for dimension in formiga_core::forms::Dimension::ALL {
         shape.set(dimension, dice.range(2, STEPS as u32 - 2) as u8);
     }
 }
@@ -557,7 +557,7 @@ fn roll_recipe(recipe: &mut CreatureDesign, layer: Layer, dice: &mut Dice) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use formiga_forms::PartKind;
+    use formiga_core::forms::PartKind;
 
     fn panda() -> Design {
         crate::presets::find("animal.giant_panda").unwrap().design
