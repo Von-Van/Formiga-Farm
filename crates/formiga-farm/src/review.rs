@@ -1,9 +1,10 @@
 //! Pictures drawn without a window, for review: every preset, and one design in every pose.
 
 use anyhow::{Context, Result};
+use formiga_art::forms::{DesignRenderer, Intent};
 use formiga_art::{Canvas, Rgba};
 use formiga_core::AppearanceGenome;
-use formiga_forms::{Design, DesignRenderer, Intent};
+use formiga_core::forms::Design;
 use std::path::Path;
 
 /// The genome a design is drawn over when it is not yet anyone's: an ordinary grown companion.
@@ -61,7 +62,7 @@ fn picture(design: &Design, intent: Intent, frame: u8, scale: i32, detail: u32) 
     let base = stand_in();
     if detail > 1 {
         let canvas =
-            DesignRenderer::intent_frame_hd(design, &base, intent, frame, true, false, detail);
+            crate::drawing::intent_frame_hd(design, &base, intent, frame, true, false, detail);
         let drawn = canvas.width() as i32 / 48;
         (canvas, (scale / drawn).max(1))
     } else {
@@ -163,7 +164,7 @@ pub fn import_sheet(picture: &image::RgbaImage, takes: &[crate::import::Take]) -
 }
 
 fn picture_of(design: &Design, scale: i32) -> (Canvas, i32) {
-    picture(design, Intent::Idle, 0, scale, formiga_forms::DETAIL)
+    picture(design, Intent::Idle, 0, scale, crate::drawing::DETAIL)
 }
 
 pub fn write_png(canvas: &Canvas, path: &Path) -> Result<()> {

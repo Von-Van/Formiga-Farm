@@ -31,10 +31,11 @@
 //! an animal's own parts, and the closest in a plain coat.
 
 use anyhow::{Context, Result, bail};
+use formiga_art::forms::{DesignRenderer, Intent};
 use formiga_core::AppearanceGenome;
-use formiga_forms::{
-    Coat, Design, DesignRenderer, Dimension, Form, Ink, Intent, MAX_MARKINGS, MIDDLE, Marking,
-    MarkingKind, Part, PartKind, Plan, STEPS, Sculpt, Slot, Treatment, plain_face,
+use formiga_core::forms::{
+    Coat, Design, Dimension, Form, Ink, MAX_MARKINGS, MIDDLE, Marking, MarkingKind, Part, PartKind,
+    Plan, STEPS, Sculpt, Slot, Treatment, plain_face,
 };
 use image::metadata::Orientation;
 use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits, RgbaImage};
@@ -1418,21 +1419,20 @@ fn takes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use formiga_forms::DesignRenderer;
 
     /// A preset drawn large, as a picture of it would be: on a plain background, finely, at
     /// rest, facing `right` or left.
     fn picture_of(id: &str, right: bool, background: [u8; 3]) -> RgbaImage {
         let preset = crate::presets::find(id).expect("the preset exists");
         let base = crate::review::stand_in();
-        let canvas = DesignRenderer::intent_frame_hd(
+        let canvas = crate::drawing::intent_frame_hd(
             &preset.design,
             &base,
-            formiga_forms::Intent::Idle,
+            formiga_art::forms::Intent::Idle,
             0,
             right,
             true,
-            formiga_forms::DETAIL,
+            crate::drawing::DETAIL,
         );
         let mut image = RgbaImage::from_pixel(
             canvas.width(),

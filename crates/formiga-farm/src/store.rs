@@ -7,7 +7,7 @@
 //! opens without it.
 
 use crate::session::now;
-use formiga_forms::Design;
+use formiga_core::forms::Design;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
@@ -407,7 +407,7 @@ mod tests {
         let bad = dir.join(DRAFTS).join("0123456789abcdef.json");
         std::fs::write(&bad, b"{ this is not a draft").unwrap();
         let mut odd = Draft::new("Odd", crate::presets::blank(), None, None);
-        if let formiga_forms::Form::Sculpted { sculpt } = &mut odd.design.form {
+        if let formiga_core::forms::Form::Sculpted { sculpt } = &mut odd.design.form {
             sculpt.shape.head = 200;
         }
         let odd_path = dir.join(DRAFTS).join(format!("{}.json", odd.id));

@@ -5,7 +5,7 @@
 use super::{Dialog, FarmApp, style};
 use crate::import::{self, Take};
 use eframe::egui;
-use formiga_forms::Design;
+use formiga_core::forms::Design;
 use image::RgbaImage;
 use std::path::PathBuf;
 use std::sync::mpsc;

@@ -68,8 +68,7 @@ would. What a rehearsal keeps lasts as long as the window.
 
 | Part | Status |
 | --- | --- |
-| The design model and the drawing of sculpted forms (`formiga-forms`) | Draft, kept here until Desktop adopts it into `formiga-core` and `formiga-art` |
-| The design contract (`formiga-farm-contract`) | Draft, kept here until Desktop adopts it |
+| The design model, the drawing of sculpted forms and the design contract | Desktop's own (`formiga_core::forms`, `formiga_art::forms`, `formiga-farm-contract`), taken from Formiga Desktop 0.67.14 |
 | Seven sculpted body plans, every Desktop clip on each | Preview |
 | Twenty-one animal presets, seven body forms, Desktop's five companion bodies | Preview |
 | The editor: four layers, undo, layer rolls and resets, before and after | Preview |
@@ -125,7 +124,7 @@ it. Deleting a draft or preset never changes anyone in the colony.
 
 ## Building
 
-Rust 1.97.1. The shared crates come from Formiga Desktop by one release tag, `v0.67.5`. The gate
+Rust 1.97.1. The shared crates come from Formiga Desktop by one release tag, `v0.67.14`. The gate
 CI runs on macOS and Windows:
 
 ```bash

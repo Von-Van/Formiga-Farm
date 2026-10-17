@@ -4,8 +4,8 @@
 use super::{Deletable, Dialog, FarmApp, Shelf, style};
 use crate::presets;
 use eframe::egui;
+use formiga_core::forms::Design;
 use formiga_farm_contract::FarmMode;
-use formiga_forms::Design;
 
 enum Pick {
     Preset { design: Design, id: String },

@@ -17,9 +17,10 @@ use crate::presets::Preset;
 use crate::session::{Heard, Host};
 use crate::store::{Draft, PersonalPreset, Store, WindowPlace};
 use eframe::egui::{self, Color32};
+use formiga_art::forms::Intent;
 use formiga_core::AppearanceGenome;
+use formiga_core::forms::Design;
 use formiga_farm_contract::{FarmMode, FarmSnapshot, Lineage, ProposalKind, Verdict};
-use formiga_forms::{Design, Intent};
 use pictures::Pictures;
 use std::path::PathBuf;
 
@@ -1050,7 +1051,7 @@ impl Drop for FarmApp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use formiga_forms::Form;
+    use formiga_core::forms::Form;
 
     fn app(edit: Option<usize>) -> FarmApp {
         let (rehearsal, snapshot) = crate::session::Rehearsal::open(

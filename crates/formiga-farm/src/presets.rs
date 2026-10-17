@@ -3,12 +3,12 @@
 //! where a design starts; it carries no trait, no rarity and no advantage, and nothing about a
 //! creature remembers which one it began as except the design's own lineage note.
 
-use formiga_core::{
-    BrowStyle, CheekStyle, EyeShape, FaceGenome, HighlightStyle, MouthStyle, PupilStyle,
-};
-use formiga_forms::{
+use formiga_core::forms::{
     Coat, Design, Form, Ink, Marking, MarkingKind, Part, PartKind, Plan, Sculpt, Shape, Treatment,
     plain_face,
+};
+use formiga_core::{
+    BrowStyle, CheekStyle, EyeShape, FaceGenome, HighlightStyle, MouthStyle, PupilStyle,
 };
 
 /// Which group a preset is listed in.

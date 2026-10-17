@@ -7,7 +7,7 @@ use super::{FarmApp, View, style};
 use crate::notices::Level;
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke, vec2};
 use formiga_art::FRAME_SIZE;
-use formiga_forms::{DesignRenderer, Intent};
+use formiga_art::forms::{DesignRenderer, Intent};
 
 const FRAME: f32 = FRAME_SIZE as f32;
 const UV: Rect = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
@@ -64,7 +64,7 @@ impl FarmApp {
             frame: self.frame_now(),
             facing_right: self.facing_right,
             outlined,
-            detail: if hd { formiga_forms::DETAIL } else { 1 },
+            detail: if hd { crate::drawing::DETAIL } else { 1 },
         };
         let baseline = DesignRenderer::resting_baseline(&design, &self.base, self.reduce_motion());
         let texture = self.pictures.frame(
