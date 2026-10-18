@@ -1217,15 +1217,11 @@ mod tests {
     use formiga_core::forms::Form;
 
     #[test]
-    fn farm_opened_on_its_own_welcomes_the_owner_until_they_look_around() {
+    fn farm_opened_on_its_own_opens_on_the_welcome() {
         let mut farm = app(None);
+        assert!(farm.dialog.is_none());
         farm.welcome();
-        let ctx = egui::Context::default();
-        let _ = ctx.run_ui(egui::RawInput::default(), |ui| farm.dialogs(ui.ctx()));
-        assert!(
-            matches!(farm.dialog, Some(Dialog::Welcome)),
-            "the welcome stays until it is answered"
-        );
+        assert!(matches!(farm.dialog, Some(Dialog::Welcome)));
         let words = welcome_words();
         assert!(words.contains("\u{201c}Reshape in Formiga Farm\u{201d}"));
         assert!(words.contains("\u{201c}Draw one in Formiga Farm\u{201d}"));
