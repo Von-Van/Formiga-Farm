@@ -5,13 +5,13 @@
 use super::{FarmApp, style};
 use crate::editor::Layer;
 use eframe::egui;
+use formiga_core::forms::{
+    Design, Dimension, Form, Ink, MAX_MARKINGS, Marking, MarkingKind, NUDGE, Part, Plan, STEPS,
+    Sculpt, Slot, Treatment,
+};
 use formiga_core::{
     BodyPlan, BrowStyle, CheekStyle, CreatureDesign, EarStyle, EyeShape, HighlightStyle,
     MouthStyle, PupilStyle,
-};
-use formiga_forms::{
-    Design, Dimension, Form, Ink, MAX_MARKINGS, Marking, MarkingKind, NUDGE, Part, Plan, STEPS,
-    Sculpt, Slot, Treatment,
 };
 
 const COMPANIONS: [(BodyPlan, &str); 5] = [
@@ -192,13 +192,17 @@ impl FarmApp {
                 let chosen = design.form.sculpt().is_some_and(|s| s.plan == plan);
                 let response = ui.selectable_label(chosen, plan.label());
                 let response = response.on_hover_text(match plan.locomotion() {
-                    formiga_forms::Locomotion::Walk => "Walks on four legs.",
-                    formiga_forms::Locomotion::Amble => "Stands and ambles upright, with arms.",
-                    formiga_forms::Locomotion::Float => {
+                    formiga_core::forms::Locomotion::Walk => "Walks on four legs.",
+                    formiga_core::forms::Locomotion::Amble => {
+                        "Stands and ambles upright, with arms."
+                    }
+                    formiga_core::forms::Locomotion::Float => {
                         "Floats a little above the ground and bobs along; never walks."
                     }
-                    formiga_forms::Locomotion::Crawl => "Paddles along low to the ground.",
-                    formiga_forms::Locomotion::Hop => "Hops on two feet, with a flap now and then.",
+                    formiga_core::forms::Locomotion::Crawl => "Paddles along low to the ground.",
+                    formiga_core::forms::Locomotion::Hop => {
+                        "Hops on two feet, with a flap now and then."
+                    }
                 });
                 if response.clicked() && !chosen {
                     self.editor.set_plan(plan);
@@ -284,7 +288,7 @@ impl FarmApp {
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     let mut kind = fitted.map(|p| p.kind);
-                    let mut options: Vec<(Option<formiga_forms::PartKind>, &str)> =
+                    let mut options: Vec<(Option<formiga_core::forms::PartKind>, &str)> =
                         vec![(None, "None")];
                     options.extend(slot.kinds().map(|k| (Some(k), k.label())));
                     if choose(
@@ -299,7 +303,8 @@ impl FarmApp {
                                 match kind {
                                     Some(kind) => {
                                         let ink = fitted.map_or(Ink::Primary, |p| p.ink);
-                                        let size = fitted.map_or(formiga_forms::MIDDLE, |p| p.size);
+                                        let size =
+                                            fitted.map_or(formiga_core::forms::MIDDLE, |p| p.size);
                                         sculpt.fit(Part::new(kind, ink).sized(size));
                                     }
                                     None => {

@@ -10,14 +10,14 @@ The reason for the care is the same as for the other apps. A colony can represen
 someone's time, and Farm is an optional extra. If Farm is missing, out of date, or crashes while
 a creature is being reshaped, the creature should simply keep the look it had.
 
-The contract is two crates. `formiga-forms` is the design model and how a design is drawn;
-`formiga-farm-contract` is the session: its `lib.rs` is the authority, followed by
-`snapshot.rs`, `replies.rs`, `accept.rs` and `projection.rs`. Example documents for every
-version (the golden fixtures) are kept in `crates/formiga-farm-contract/tests/fixtures`.
-
-Both are drafts that live beside Farm until Desktop adopts them: the design model moves into
-`formiga-core`, its drawing into `formiga-art`, and the session contract into Desktop's workspace
-beside `formiga-travel`. Then Farm takes them by release tag, like the other Desktop crates.
+The contract is Desktop's, and Farm takes it by Desktop's release tag, as Hill takes
+`formiga-travel` and Home `formiga-home-contract`. The design model is `formiga_core::forms`, and
+how a sculpted form is drawn is `formiga_art::forms`. The session is the `formiga-farm-contract`
+crate in Desktop's workspace: its `lib.rs` is the authority, followed by `snapshot.rs`,
+`replies.rs`, `accept.rs` and `projection.rs`, and example documents for every version (the
+golden fixtures) are kept beside it in its `tests/fixtures`. What a session shares with a trip or
+a visit (the session's identifier, how documents are bounded and written whole, how text is made
+safe, the reasons for refusing a session) is `formiga-expansion-rulebook`'s.
 
 ## What a design is
 
@@ -29,10 +29,12 @@ cheeks: Desktop's own `FaceGenome`). The form is one of three:
 | --- | --- | --- |
 | `original` | The look of a companion made before recipes, from its genes | `formiga-art`, unchanged |
 | `companion` | One of Desktop's five companion plans, exactly as its `CreatureDesign` recipe says | `formiga-art`, unchanged |
-| `sculpted` | A `Sculpt` on one of seven newer body plans | `formiga-forms`, with Formiga's own faces |
+| `sculpted` | A `Sculpt` on one of seven newer body plans | `formiga-art`'s `forms`, with Formiga's own faces |
 
-A creature that keeps its body keeps every pixel: the renderer tests compare Farm's drawing of
-every creature in Desktop's sample colony with Desktop's own, clip by clip, both ways round.
+Farm draws every design through Desktop's own renderer, so a creature that keeps its body keeps
+every pixel, and a sculpted form looks in Farm exactly as it will on the desktop. Farm's finer
+stage drawing puts Desktop's finely painted body and face together, and at one pixel to the unit
+it is Desktop's frame exactly; a test holds it to that.
 
 A `Sculpt` is:
 
@@ -56,7 +58,7 @@ Every value is a small bounded number or a known name. Nothing in a design is a 
 image or code. `Design::validate` refuses anything out of range or unknown, and a reader refuses
 rather than repairs. `Design::revision` names a design exactly: 32 hex digits of its SHA-256.
 
-The design model has its own version, `formiga_forms::DESIGN_VERSION` (1).
+The design model has its own version, `formiga_core::forms::DESIGN_VERSION` (1).
 
 ## Who owns what
 
@@ -108,8 +110,8 @@ The snapshot is everything Farm is allowed to know, and it is narrow on purpose:
 
 - **mode**: `create { stand_in }`, the look Desktop would draw a newcomer over before it is
   anyone; or `edit_existing { creature }`, with the creature's id, name (for the window's title),
-  role, its look exactly as a trip carries it (`TravelAppearance`), the sculpt Desktop keeps for
-  it if any, its `revision`, its stature and scale, what it is wearing (to show on the new form),
+  role, its look exactly as a trip carries it (`TravelAppearance`), its sculpt if it has one
+  (which a trip leaves behind), its `revision`, its stature and scale, what it is wearing (to show on the new form),
   and whether it is `available` or `away` with another companion app.
 - **capabilities**: what Desktop will do with a proposal: `edit_existing`, `create_new`,
   `sculpted_forms` (it can keep and draw sculpted forms) and `journal_note` (it notes a kept
@@ -138,10 +140,11 @@ creature lives on, or the colony's seed. A test reads the sample snapshot for th
 
 Then `apply_design(creature, design)` makes the change, and it changes only:
 
-- `appearance.design` and `origin.design` (the recipe, as Desktop always keeps both), and
-- `appearance.face`;
+- `appearance.design` and `origin.design` (the recipe, as Desktop always keeps both),
+- `appearance.sculpt`, the sculpted form if the design has one, and
+- `appearance.face`.
 
-and returns the sculpt Desktop keeps beside the creature, if the design has one. Its id, name,
+Its id, name,
 temperament, family, habits, memories, relationships and history are not part of a design and
 are never touched; a test checks every one of them, and everyone else in the colony, is
 unchanged.

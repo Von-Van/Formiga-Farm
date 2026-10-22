@@ -27,9 +27,10 @@ If you publish a version of your own, please:
   ```
 
 - Farm never reads or writes a colony's save. What passes between Farm and Formiga Desktop is
-  written up in [docs/CONTRACT.md](docs/CONTRACT.md). The golden fixtures in
-  `crates/formiga-farm-contract/tests/fixtures` are every version as it was first written, and are
-  never rewritten to make a test pass: a new version's files go beside the old ones.
+  written up in [docs/CONTRACT.md](docs/CONTRACT.md). The contract, the design model and the
+  drawing of sculpted forms are Formiga Desktop's crates, taken by its release tag in the root
+  `Cargo.toml`; a change to any of them is made in Desktop, and Farm moves to the release that
+  has it.
 
 Before sharing a build, run the same gate CI runs on macOS and Windows:
 

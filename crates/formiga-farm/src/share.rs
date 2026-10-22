@@ -10,7 +10,7 @@
 use anyhow::{Context, Result, bail};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use formiga_forms::{Design, Form};
+use formiga_core::forms::{Design, Form};
 use serde::{Deserialize, Serialize};
 
 /// What every code begins with, naming its version, so a code from a later Farm is told apart

@@ -2,6 +2,7 @@
 //! Journal, on a creature to reshape or on nothing at all, and hands Desktop a design to keep.
 
 mod app;
+mod drawing;
 mod editor;
 mod habitat;
 mod icon;
@@ -17,7 +18,7 @@ mod store;
 use anyhow::{Context, Result, bail};
 use app::{FarmApp, Opening, Shelf, View};
 use editor::Layer;
-use formiga_forms::Intent;
+use formiga_art::forms::Intent;
 use session::{Host, Rehearsal};
 use std::path::PathBuf;
 
@@ -189,12 +190,12 @@ fn review_detail(raw: &[String]) -> Result<u32> {
                 .and_then(|value| value.parse().ok())
                 .context("--detail is a number from 1 to 4")?;
             anyhow::ensure!(
-                (1..=formiga_forms::MAX_DETAIL).contains(&detail),
+                (1..=crate::drawing::MAX_DETAIL).contains(&detail),
                 "--detail is a number from 1 to 4"
             );
             Ok(detail)
         }
-        None => Ok(formiga_forms::DETAIL),
+        None => Ok(crate::drawing::DETAIL),
     }
 }
 
