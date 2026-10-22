@@ -321,10 +321,16 @@ impl Editor {
     }
 
     /// Roll one layer at random, leaving the rest. A plan is never changed by rolling parts or
-    /// colours, and the design keeps the values rolled, not the roll.
+    /// colours, and the design keeps the values rolled, not the roll. Rolled parts let go of any
+    /// set aside, so none from before the roll come back with a later body.
     pub fn randomize(&mut self, layer: Layer, seed: u32) {
         let mut dice = Dice::new(seed);
-        self.edit(None, |d| roll_layer(d, layer, &mut dice));
+        self.change(None, |d, set_aside| {
+            roll_layer(d, layer, &mut dice);
+            if layer == Layer::Parts {
+                set_aside.clear();
+            }
+        });
     }
 
     /// Roll everything at random but what `locks` keeps, as one change that undoes as one: a
@@ -353,6 +359,10 @@ impl Editor {
                 if !locks.kept(layer) {
                     roll_layer(d, layer, &mut dice);
                 }
+            }
+            // Parts rolled anew let go of any set aside, as a single roll of them does.
+            if !locks.kept(Layer::Parts) {
+                set_aside.clear();
             }
         });
     }
@@ -809,6 +819,38 @@ mod tests {
                 "one undo puts it all back"
             );
         }
+    }
+
+    #[test]
+    fn rolling_the_parts_lets_go_of_any_set_aside() {
+        // Paws set aside on a floater would otherwise come back with a later body, though the
+        // parts were rolled since.
+        let mut editor = Editor::new(panda(), None);
+        editor.set_plan(Plan::Floater);
+        assert!(!editor.set_aside().is_empty());
+        editor.randomize(Layer::Parts, 7);
+        assert!(editor.set_aside().is_empty());
+        for seed in 1..40 {
+            let mut editor = Editor::new(panda(), None);
+            editor.set_plan(Plan::Floater);
+            editor.roll_all(Locks::default(), seed);
+            assert!(editor.set_aside().is_empty(), "seed {seed}");
+            editor.undo();
+            assert!(
+                !editor.set_aside().is_empty(),
+                "undone, they are set aside again"
+            );
+        }
+        // Kept parts keep what was set aside too.
+        let mut locks = Locks {
+            body: true,
+            ..Locks::default()
+        };
+        *locks.keep(Layer::Parts) = true;
+        let mut editor = Editor::new(panda(), None);
+        editor.set_plan(Plan::Floater);
+        editor.roll_all(locks, 3);
+        assert!(!editor.set_aside().is_empty());
     }
 
     #[test]

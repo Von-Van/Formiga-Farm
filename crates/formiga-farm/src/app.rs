@@ -389,10 +389,11 @@ impl FarmApp {
         &self.notices.1
     }
 
-    /// Keep the draft, now.
-    fn keep_draft(&mut self) {
+    /// Keep the draft, now. Returns whether the owner was told something on the way: a draft let
+    /// go to make room, or that it could not be kept.
+    fn keep_draft(&mut self) -> bool {
         if self.editor.changes == self.kept_changes {
-            return;
+            return false;
         }
         self.draft.design = self.editor.design().clone();
         self.draft.preset = self.editor.preset.clone();
@@ -400,26 +401,39 @@ impl FarmApp {
             Ok(let_go) => {
                 self.kept_changes = self.editor.changes;
                 self.drafts = self.store.drafts();
-                if let Some(oldest) = let_go.first() {
-                    self.say(
-                        format!(
-                            "The drafts shelf holds {}, so the oldest, \u{201c}{}\u{201d}, was let go to keep this one.",
-                            crate::store::MAX_DRAFTS,
-                            oldest.name
-                        ),
-                        true,
-                    );
-                }
+                self.say_let_go(&let_go)
             }
-            Err(error) => self.say(format!("The draft could not be kept: {error}"), true),
+            Err(error) => {
+                self.say(format!("The draft could not be kept: {error}"), true);
+                true
+            }
         }
     }
 
-    /// Keep the draft now, whatever the count says, and say so: the owner asked.
+    /// Name the draft a full shelf let go to keep another, if it let one go. Returns whether it
+    /// did.
+    fn say_let_go(&mut self, let_go: &[Draft]) -> bool {
+        let Some(oldest) = let_go.first() else {
+            return false;
+        };
+        self.say(
+            format!(
+                "The drafts shelf holds {}, so the oldest, \u{201c}{}\u{201d}, was let go to keep this one.",
+                crate::store::MAX_DRAFTS,
+                oldest.name
+            ),
+            true,
+        );
+        true
+    }
+
+    /// Keep the draft now, whatever the count says, and say so: the owner asked. Anything the
+    /// keeping had to say, a draft let go or a failure, is left to be read instead.
     fn keep_draft_now(&mut self) {
         self.kept_changes = self.editor.changes.wrapping_sub(1);
-        self.keep_draft();
-        self.say("Draft kept.", false);
+        if !self.keep_draft() {
+            self.say("Draft kept.", false);
+        }
     }
 
     /// Keep the draft once the owner has paused, so a crash loses nothing.
@@ -1296,6 +1310,31 @@ mod tests {
             panic!()
         };
         assert_eq!(rehearsal.welcomed, 1);
+    }
+
+    #[test]
+    fn keeping_a_draft_onto_a_full_shelf_names_the_one_let_go() {
+        let dir =
+            std::env::temp_dir().join(format!("formiga-farm-app-full-{}", crate::store::new_id()));
+        let store = Store::new(Some(dir.clone()));
+        for index in 0..crate::store::MAX_DRAFTS {
+            let mut old = Draft::new("Old", crate::presets::blank(), None, None);
+            old.id = format!("1{index:015x}");
+            store.save_draft(&mut old).unwrap();
+        }
+        let mut app = app(None);
+        app.store = store;
+        // An id that sorts first, so the one just kept is never the one let go.
+        app.draft.id = "0000000000000000".into();
+        app.editor.randomize(Layer::Finish, 9);
+        app.keep_draft_now();
+        assert!(
+            app.toast
+                .as_ref()
+                .is_some_and(|t| t.trouble && t.text.contains("Old") && t.text.contains("let go")),
+            "the explicit save still names the draft let go"
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
