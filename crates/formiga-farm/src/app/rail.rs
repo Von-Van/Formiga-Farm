@@ -198,7 +198,7 @@ impl FarmApp {
                     let (texture, size) =
                         self.pictures
                             .thumb(ui.ctx(), &entry.key, &entry.design, &self.base);
-                    let row = ui.horizontal(|ui| {
+                    let contents = |ui: &mut egui::Ui| {
                         let scale = (40.0 / size.y.max(size.x * 0.8)).floor().clamp(1.0, 3.0);
                         let (rect, _) =
                             ui.allocate_exact_size(egui::vec2(52.0, 44.0), egui::Sense::hover());
@@ -233,14 +233,17 @@ impl FarmApp {
                             .response
                             .on_hover_text("Compare, rename, copy and more");
                         });
-                    });
+                    };
                     // The whole row is one button: it takes keyboard focus, Enter or Space picks
-                    // it, and a screen reader hears its name and what it is.
-                    let response = ui.interact(
-                        row.response.rect,
-                        ui.id().with(("rail-entry", index)),
-                        egui::Sense::click(),
-                    );
+                    // it, and a screen reader hears its name and what it is. It sits behind the
+                    // delete and menu buttons, so those still take their own clicks.
+                    let row = egui::UiBuilder::new()
+                        .id_salt(("rail-entry", index))
+                        .layout(egui::Layout::left_to_right(egui::Align::Center))
+                        .sense(egui::Sense::click());
+                    let response = ui
+                        .horizontal(|ui| ui.scope_builder(row, contents).response)
+                        .inner;
                     let spoken = match &entry.note {
                         Some(note) => format!("Start from {}: {note}", entry.name),
                         None => format!("Start from {}", entry.name),
@@ -250,14 +253,14 @@ impl FarmApp {
                     });
                     if response.has_focus() {
                         ui.painter().rect_stroke(
-                            row.response.rect.expand(2.0),
+                            response.rect.expand(2.0),
                             6.0,
                             ui.visuals().selection.stroke,
                             egui::StrokeKind::Outside,
                         );
                     } else if response.hovered() {
                         ui.painter().rect_stroke(
-                            row.response.rect.expand(2.0),
+                            response.rect.expand(2.0),
                             6.0,
                             egui::Stroke::new(1.0, ink.chosen),
                             egui::StrokeKind::Outside,
@@ -320,12 +323,14 @@ impl FarmApp {
                         draft.for_name.clone(),
                     );
                     match self.store.save_draft(&mut copy) {
-                        Ok(_) => {
+                        Ok(let_go) => {
                             self.drafts = self.store.drafts();
-                            self.say(
-                                format!("Kept a copy as \u{201c}{}\u{201d}.", copy.name),
-                                false,
-                            );
+                            if !self.say_let_go(&let_go) {
+                                self.say(
+                                    format!("Kept a copy as \u{201c}{}\u{201d}.", copy.name),
+                                    false,
+                                );
+                            }
                         }
                         Err(error) => self.say(format!("Could not copy it: {error}"), true),
                     }
