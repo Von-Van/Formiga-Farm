@@ -48,6 +48,17 @@ else
     codesign --force --deep --sign - "$app_dir"
 fi
 
+# A notarised build notarises the app itself and staples its ticket before it is packed, so the
+# zip opens without a warning too, not only the disk image.
+if [[ -n "${FORMIGA_NOTARY_PROFILE:-}" ]]; then
+    notary_dir="$(mktemp -d)"
+    ditto -c -k --keepParent "$app_dir" "$notary_dir/Formiga Farm.zip"
+    xcrun notarytool submit "$notary_dir/Formiga Farm.zip" \
+        --keychain-profile "$FORMIGA_NOTARY_PROFILE" --wait
+    xcrun stapler staple "$app_dir"
+    rm -rf "$notary_dir"
+fi
+
 ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$archive"
 mkdir -p "$dmg_staging"
 ditto "$app_dir" "$dmg_staging/Formiga Farm.app"

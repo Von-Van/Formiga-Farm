@@ -14,6 +14,15 @@ enum Pick {
     Arrival,
 }
 
+/// What can be done with a shelf's entry besides starting from it.
+enum Act {
+    Compare,
+    Rename(Deletable),
+    Duplicate(Deletable),
+    KeepAsPreset,
+    CopyCode,
+}
+
 struct Entry {
     key: String,
     name: String,
@@ -158,8 +167,24 @@ impl FarmApp {
             }
             _ => None,
         };
+        // A full shelf says so before it has to let a draft go: the next new draft takes the
+        // oldest one's place.
+        let full = self.shelf == Shelf::Drafts
+            && self.drafts.len() >= crate::store::MAX_DRAFTS
+            && self.drafts.iter().all(|draft| draft.id != self.draft.id);
+        if full {
+            ui.label(
+                egui::RichText::new(format!(
+                    "The shelf is full at {} drafts. The next one kept lets the oldest go, so delete any you don\u{2019}t need, or save one as a preset to keep it for good.",
+                    crate::store::MAX_DRAFTS
+                ))
+                .small()
+                .color(ink.warn),
+            );
+        }
         let mut picked = None;
         let mut delete = None;
+        let mut act = None;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -173,7 +198,7 @@ impl FarmApp {
                     let (texture, size) =
                         self.pictures
                             .thumb(ui.ctx(), &entry.key, &entry.design, &self.base);
-                    let row = ui.horizontal(|ui| {
+                    let contents = |ui: &mut egui::Ui| {
                         let scale = (40.0 / size.y.max(size.x * 0.8)).floor().clamp(1.0, 3.0);
                         let (rect, _) =
                             ui.allocate_exact_size(egui::vec2(52.0, 44.0), egui::Sense::hover());
@@ -190,31 +215,52 @@ impl FarmApp {
                                 ui.label(egui::RichText::new(note).small().color(ink.faint));
                             }
                         });
-                        if let Some(what) = &entry.delete {
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui
-                                        .small_button("\u{2715}")
-                                        .on_hover_text(
-                                            "Throw this away. Nobody in the colony changes.",
-                                        )
-                                        .clicked()
-                                    {
-                                        delete = Some((what.clone(), entry.name.clone()));
-                                    }
-                                },
-                            );
-                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if let Some(what) = &entry.delete
+                                && ui
+                                    .small_button("\u{2715}")
+                                    .on_hover_text("Throw this away. Nobody in the colony changes.")
+                                    .clicked()
+                            {
+                                delete = Some((what.clone(), entry.name.clone()));
+                            }
+                            ui.menu_button("\u{2026}", |ui| {
+                                if let Some(chosen) = entry_menu(ui, entry) {
+                                    act = Some((index, chosen));
+                                    ui.close();
+                                }
+                            })
+                            .response
+                            .on_hover_text("Compare, rename, copy and more");
+                        });
+                    };
+                    // The whole row is one button: it takes keyboard focus, Enter or Space picks
+                    // it, and a screen reader hears its name and what it is. It sits behind the
+                    // delete and menu buttons, so those still take their own clicks.
+                    let row = egui::UiBuilder::new()
+                        .id_salt(("rail-entry", index))
+                        .layout(egui::Layout::left_to_right(egui::Align::Center))
+                        .sense(egui::Sense::click());
+                    let response = ui
+                        .horizontal(|ui| ui.scope_builder(row, contents).response)
+                        .inner;
+                    let spoken = match &entry.note {
+                        Some(note) => format!("Start from {}: {note}", entry.name),
+                        None => format!("Start from {}", entry.name),
+                    };
+                    response.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &spoken)
                     });
-                    let response = ui.interact(
-                        row.response.rect,
-                        ui.id().with(("rail-entry", index)),
-                        egui::Sense::click(),
-                    );
-                    if response.hovered() {
+                    if response.has_focus() {
                         ui.painter().rect_stroke(
-                            row.response.rect.expand(2.0),
+                            response.rect.expand(2.0),
+                            6.0,
+                            ui.visuals().selection.stroke,
+                            egui::StrokeKind::Outside,
+                        );
+                    } else if response.hovered() {
+                        ui.painter().rect_stroke(
+                            response.rect.expand(2.0),
                             6.0,
                             egui::Stroke::new(1.0, ink.chosen),
                             egui::StrokeKind::Outside,
@@ -223,11 +269,20 @@ impl FarmApp {
                     if response.clicked() {
                         picked = Some(index);
                     }
+                    response.context_menu(|ui| {
+                        if let Some(chosen) = entry_menu(ui, entry) {
+                            act = Some((index, chosen));
+                            ui.close();
+                        }
+                    });
                     ui.add_space(2.0);
                 }
             });
         if let Some((what, name)) = delete {
             self.dialog = Some(Dialog::Delete { what, name });
+        } else if let Some((index, act)) = act {
+            let entry = entries.swap_remove(index);
+            self.act_on(ui.ctx(), entry, act);
         } else if let Some(index) = picked {
             let entry = entries.swap_remove(index);
             match entry.pick {
@@ -247,4 +302,102 @@ impl FarmApp {
             }
         }
     }
+}
+
+impl FarmApp {
+    fn act_on(&mut self, ctx: &egui::Context, entry: Entry, act: Act) {
+        match act {
+            Act::Compare => self.compare(&entry.name, entry.design),
+            Act::Rename(what) => {
+                self.dialog = Some(Dialog::Rename {
+                    what,
+                    name: entry.name,
+                });
+            }
+            Act::Duplicate(Deletable::Draft(id)) => {
+                if let Some(draft) = self.drafts.iter().find(|d| d.id == id) {
+                    let mut copy = crate::store::Draft::new(
+                        &format!("{} (copy)", draft.name),
+                        draft.design.clone(),
+                        draft.preset.clone(),
+                        draft.for_name.clone(),
+                    );
+                    match self.store.save_draft(&mut copy) {
+                        Ok(let_go) => {
+                            self.drafts = self.store.drafts();
+                            if !self.say_let_go(&let_go) {
+                                self.say(
+                                    format!("Kept a copy as \u{201c}{}\u{201d}.", copy.name),
+                                    false,
+                                );
+                            }
+                        }
+                        Err(error) => self.say(format!("Could not copy it: {error}"), true),
+                    }
+                }
+            }
+            Act::Duplicate(Deletable::Preset(_)) => {
+                let copy = crate::store::PersonalPreset::new(
+                    &format!("{} (copy)", entry.name),
+                    entry.design,
+                );
+                match self.store.save_preset(&copy) {
+                    Ok(()) => {
+                        self.mine = self.store.presets();
+                        self.say(
+                            format!("Kept a copy as \u{201c}{}\u{201d}.", copy.name),
+                            false,
+                        );
+                    }
+                    Err(error) => self.say(format!("Could not copy it: {error}"), true),
+                }
+            }
+            Act::KeepAsPreset => {
+                let preset = crate::store::PersonalPreset::new(&entry.name, entry.design);
+                match self.store.save_preset(&preset) {
+                    Ok(()) => {
+                        self.mine = self.store.presets();
+                        self.say(
+                            format!("Kept \u{201c}{}\u{201d} in My presets.", preset.name),
+                            false,
+                        );
+                    }
+                    Err(error) => self.say(format!("Could not keep it: {error}"), true),
+                }
+            }
+            Act::CopyCode => self.copy_code_of(ctx, &entry.design, &entry.name),
+        }
+    }
+}
+
+/// The menu for one entry on a shelf. Returns what was chosen, if anything was.
+fn entry_menu(ui: &mut egui::Ui, entry: &Entry) -> Option<Act> {
+    let mut chosen = None;
+    if ui
+        .button("Compare with the workbench")
+        .on_hover_text("Show it beside the design on the workbench.")
+        .clicked()
+    {
+        chosen = Some(Act::Compare);
+    }
+    if let Some(what) = &entry.delete {
+        if ui.button("Rename\u{2026}").clicked() {
+            chosen = Some(Act::Rename(what.clone()));
+        }
+        if ui.button("Duplicate").clicked() {
+            chosen = Some(Act::Duplicate(what.clone()));
+        }
+        if matches!(what, Deletable::Draft(_)) && ui.button("Keep as a preset").clicked() {
+            chosen = Some(Act::KeepAsPreset);
+        }
+    }
+    if crate::share::shareable(&entry.design)
+        && ui
+            .button("Copy code")
+            .on_hover_text("Copy this look as a design code, to send to someone or keep.")
+            .clicked()
+    {
+        chosen = Some(Act::CopyCode);
+    }
+    chosen
 }

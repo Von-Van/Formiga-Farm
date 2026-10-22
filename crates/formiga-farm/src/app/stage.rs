@@ -8,6 +8,7 @@ use crate::notices::Level;
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke, vec2};
 use formiga_art::FRAME_SIZE;
 use formiga_art::forms::{DesignRenderer, Intent};
+use formiga_core::forms::Design;
 
 const FRAME: f32 = FRAME_SIZE as f32;
 const UV: Rect = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
@@ -39,9 +40,21 @@ impl FarmApp {
         ((self.clock * f64::from(fps)) as u64 % u64::from(frames.max(1))) as u8
     }
 
+    /// What to say under Formiga Hill or Home: `there`, or, for a sculpted form, that those apps
+    /// draw it as its nearest companion body for now.
+    fn travelling_caption(&self, there: &'static str) -> &'static str {
+        if self.shown().form.sculpt().is_some() {
+            "Formiga Hill and Home can't draw sculpted bodies yet,\nso it visits them as its nearest companion body, in its colours."
+        } else {
+            there
+        }
+    }
+
     /// Draw the shown design, `scale` physical pixels to an art pixel, standing with its ground
     /// row on `floor`, centred on `x`. Returns where the frame went. `hd` draws a sculpted form
-    /// in Farm's own high definition; otherwise it is Desktop's own pixels, made larger.
+    /// in Farm's own high definition; otherwise it is Desktop's own pixels, made larger. `travels`
+    /// draws it as Formiga Hill and Home will ([`crate::drawing::as_it_travels`]).
+    #[allow(clippy::too_many_arguments)]
     fn figure(
         &mut self,
         ui: &egui::Ui,
@@ -50,10 +63,13 @@ impl FarmApp {
         scale: f32,
         outlined: bool,
         hd: bool,
+        travels: bool,
     ) -> Rect {
-        let ctx = ui.ctx().clone();
-        let points = scale / ctx.pixels_per_point();
-        let design = self.shown().clone();
+        let design = if travels {
+            crate::drawing::as_it_travels(self.shown(), &self.base)
+        } else {
+            self.shown().clone()
+        };
         let key = FrameKey {
             design: if self.before {
                 u64::MAX
@@ -65,15 +81,50 @@ impl FarmApp {
             facing_right: self.facing_right,
             outlined,
             detail: if hd { crate::drawing::DETAIL } else { 1 },
+            travels,
+            dressed: self.dressed && self.dress.is_some(),
         };
-        let baseline = DesignRenderer::resting_baseline(&design, &self.base, self.reduce_motion());
+        self.paint_figure(ui, &design, key, x, floor, scale)
+    }
+
+    /// The design shown beside the workbench's to compare, drawn as the workbench's is on the
+    /// stage, at `scale`, standing on `floor` and centred on `x`.
+    fn compared_figure(&mut self, ui: &egui::Ui, design: &Design, x: f32, floor: f32, scale: f32) {
+        let key = FrameKey {
+            design: super::pictures::COMPARED,
+            intent: self.intent,
+            frame: self.frame_now(),
+            facing_right: self.facing_right,
+            outlined: false,
+            detail: if self.grid { 1 } else { crate::drawing::DETAIL },
+            travels: false,
+            dressed: self.dressed && self.dress.is_some(),
+        };
+        self.paint_figure(ui, design, key, x, floor, scale);
+    }
+
+    /// Draw `design`'s frame named by `key`, `scale` physical pixels to an art pixel, standing
+    /// with its ground row on `floor`, centred on `x`. Returns where the frame went.
+    fn paint_figure(
+        &mut self,
+        ui: &egui::Ui,
+        design: &Design,
+        key: FrameKey,
+        x: f32,
+        floor: f32,
+        scale: f32,
+    ) -> Rect {
+        let ctx = ui.ctx().clone();
+        let points = scale / ctx.pixels_per_point();
+        let baseline = DesignRenderer::resting_baseline(design, &self.base, self.reduce_motion());
         let texture = self.pictures.frame(
             &ctx,
-            &design,
+            design,
             &self.base,
             key,
             self.editor.changes,
             self.reduce_motion(),
+            self.dress,
         );
         let ground_row = FRAME - 1.0 - baseline as f32;
         let top_left = Pos2::new(
@@ -104,9 +155,16 @@ impl FarmApp {
                     Stroke::new(3.0, ink.stage_edge),
                     egui::StrokeKind::Inside,
                 );
-                let scale = ((chamber.height() * ppp * 0.78) / FRAME)
+                let compared = self.compare.clone();
+                let room_for = if compared.is_some() { 0.5 } else { 0.78 };
+                let scale = ((chamber.height() * ppp * room_for) / FRAME)
                     .floor()
                     .clamp(2.0, 14.0);
+                let x = if compared.is_some() {
+                    chamber.center().x + size * 0.22
+                } else {
+                    chamber.center().x
+                };
                 let floor = chamber.max.y - chamber.height() * 0.14;
                 // The floor of the chamber.
                 ui.painter().line_segment(
@@ -116,7 +174,20 @@ impl FarmApp {
                     ],
                     Stroke::new(2.0, ink.stage_edge),
                 );
-                let rect = self.figure(ui, chamber.center().x, floor, scale, false, !self.grid);
+                let rect = self.figure(ui, x, floor, scale, false, !self.grid, false);
+                if let Some((name, design)) = &compared {
+                    let other = chamber.center().x - size * 0.22;
+                    self.compared_figure(ui, design, other, floor, scale);
+                    for (at, label) in [(other, name.as_str()), (x, "Workbench")] {
+                        ui.painter().text(
+                            Pos2::new(at, floor + 10.0),
+                            egui::Align2::CENTER_TOP,
+                            label,
+                            egui::TextStyle::Body.resolve(ui.style()),
+                            ink.faint,
+                        );
+                    }
+                }
                 if self.grid {
                     let pixel = scale / ppp;
                     let line = Stroke::new(1.0, ink.line.gamma_multiply(0.35));
@@ -199,6 +270,7 @@ impl FarmApp {
                     2.0,
                     true,
                     false,
+                    false,
                 );
                 self.figure(
                     ui,
@@ -206,6 +278,7 @@ impl FarmApp {
                     window.min.y,
                     2.0,
                     true,
+                    false,
                     false,
                 );
                 caption(
@@ -245,11 +318,11 @@ impl FarmApp {
                     let b = Pos2::new(center.x + w * t, center.y + h - h * t);
                     ui.painter().line_segment([a, b], Stroke::new(1.0, wood[1]));
                 }
-                self.figure(ui, center.x, center.y, 4.0, false, false);
+                self.figure(ui, center.x, center.y, 4.0, false, false, true);
                 caption(
                     ui,
                     Pos2::new(center.x, center.y + h + 10.0),
-                    "Standing on its own spot in Formiga Home.",
+                    self.travelling_caption("Standing on its own spot in Formiga Home."),
                 );
             }
             View::Hill => {
@@ -279,11 +352,11 @@ impl FarmApp {
                     Stroke::NONE,
                 ));
                 let floor = ground - field.height() * 0.08 + 1.0;
-                self.figure(ui, field.center().x, floor, 3.0, false, false);
+                self.figure(ui, field.center().x, floor, 3.0, false, false, true);
                 caption(
                     ui,
                     Pos2::new(field.center().x, field.max.y + 6.0),
-                    "Out on the grass of Formiga Hill.",
+                    self.travelling_caption("Out on the grass of Formiga Hill."),
                 );
             }
         }
@@ -292,7 +365,8 @@ impl FarmApp {
     pub(super) fn strip(&mut self, ui: &mut egui::Ui) {
         let ink = style::ink(ui.visuals().dark_mode);
         let notices = self.notices().to_vec();
-        for notice in notices.iter().take(3) {
+        let shown = if self.all_notes { notices.len() } else { 3 };
+        for notice in notices.iter().take(shown) {
             let (color, mark) = match notice.level {
                 Level::Blocks => (ink.block, "\u{25cf}"),
                 Level::Warning => (ink.warn, "\u{25b2}"),
@@ -302,6 +376,16 @@ impl FarmApp {
                 ui.label(egui::RichText::new(mark).color(color));
                 ui.label(egui::RichText::new(&notice.text).color(color));
             });
+        }
+        if notices.len() > 3 {
+            let toggle = if self.all_notes {
+                "Fewer notes".to_owned()
+            } else {
+                format!("{} more notes", notices.len() - 3)
+            };
+            if ui.small_button(toggle).clicked() {
+                self.all_notes = !self.all_notes;
+            }
         }
         ui.horizontal_wrapped(|ui| {
             for intent in Intent::ALL {
@@ -324,6 +408,13 @@ impl FarmApp {
             {
                 self.facing_right = !self.facing_right;
             }
+            if let Some(dress) = self.dress {
+                let what = dress.accessory.label().to_lowercase();
+                ui.checkbox(&mut self.dressed, format!("Wearing their {what}"))
+                    .on_hover_text(
+                        "Show what they wear in Desktop on the new form, as Desktop will place it.",
+                    );
+            }
             let changed = *self.editor.design() != self.editor.arrival;
             let label = if self.snapshot.creature().is_some() {
                 "Before"
@@ -339,6 +430,17 @@ impl FarmApp {
                 .clicked()
             {
                 self.before = !self.before;
+            }
+            if let Some((name, _)) = &self.compare
+                && ui
+                    .button(format!("Stop comparing with {name}"))
+                    .on_hover_text(
+                        "Compare any draft or preset from its \u{2026} menu on the shelves.",
+                    )
+                    .clicked()
+            {
+                self.compare = None;
+                self.pictures.forget_compared();
             }
         });
         ui.horizontal_wrapped(|ui| {

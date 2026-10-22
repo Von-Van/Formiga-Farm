@@ -7,8 +7,8 @@
 
 use formiga_art::forms::{FINEST_DETAIL, Intent};
 use formiga_art::{
-    BodyClip, Canvas, CreatureRenderer, ExpressionKind, EyelidPose, FACE_FRAME_SIZE, FRAME_SIZE,
-    FaceRenderState, GazeDirection,
+    AccessoryArt, BodyClip, Canvas, CreatureRenderer, ExpressionKind, EyelidPose, FACE_FRAME_SIZE,
+    FRAME_SIZE, FaceRenderState, GazeDirection,
 };
 use formiga_core::forms::Design;
 use formiga_core::{ActionKind, AppearanceGenome};
@@ -20,6 +20,17 @@ pub const DETAIL: u32 = 2;
 /// The most pixels across each frame pixel a frame can be drawn with: as finely as Desktop
 /// draws a sculpted form on the largest screens.
 pub const MAX_DETAIL: u32 = FINEST_DETAIL;
+
+/// `design` as Formiga Hill and Home will draw it: the creature's look carried on a trip, exactly
+/// as Desktop sends it. A trip leaves a sculpted form behind, so it travels as the companion
+/// recipe Desktop keeps beside it ([`Design::fallback_recipe`]), in its colours. Anything a trip
+/// could not carry is drawn as Farm has it.
+pub fn as_it_travels(design: &Design, base: &AppearanceGenome) -> Design {
+    let genome = design.genome(base);
+    formiga_travel::TravelAppearance::from(&genome)
+        .to_genome()
+        .map_or_else(|_| design.clone(), |travelled| Design::of(&travelled))
+}
 
 /// The face Desktop shows for `intent`, as `DesignRenderer::intent_frame` draws it.
 fn intent_face(intent: Intent) -> FaceRenderState {
@@ -59,11 +70,36 @@ pub fn intent_frame_hd(
     reduce_motion: bool,
     detail: u32,
 ) -> Canvas {
+    dressed_intent_frame(
+        design,
+        base,
+        None,
+        intent,
+        frame,
+        facing_right,
+        reduce_motion,
+        detail,
+    )
+}
+
+/// [`intent_frame_hd`] wearing `dress`, what the creature wears in Desktop, placed on the body
+/// as Desktop places it on whatever body it has.
+#[allow(clippy::too_many_arguments)]
+pub fn dressed_intent_frame(
+    design: &Design,
+    base: &AppearanceGenome,
+    dress: Option<AccessoryArt>,
+    intent: Intent,
+    frame: u8,
+    facing_right: bool,
+    reduce_motion: bool,
+    detail: u32,
+) -> Canvas {
     let detail = detail.clamp(1, MAX_DETAIL);
     let genome = design.genome(base);
     let (body, mut canvas) = CreatureRenderer::render_dressed_body_frame_in_detail(
         &genome,
-        None,
+        dress,
         intent.clip(),
         frame,
         reduce_motion,
@@ -122,6 +158,25 @@ mod tests {
     }
 
     #[test]
+    fn a_sculpted_form_travels_as_its_nearest_companion_body_and_a_companion_as_itself() {
+        let base = crate::review::stand_in();
+        for design in designs() {
+            let travelled = as_it_travels(&design, &base);
+            assert!(travelled.form.sculpt().is_none());
+            match &design.form {
+                Form::Sculpted { .. } => assert_eq!(
+                    travelled.form,
+                    Form::Companion {
+                        recipe: design.fallback_recipe(base.design).unwrap()
+                    }
+                ),
+                _ => assert_eq!(travelled.genome(&base), design.genome(&base)),
+            }
+            assert_eq!(travelled.face, design.face);
+        }
+    }
+
+    #[test]
     fn at_one_pixel_to_the_unit_a_frame_is_exactly_the_one_desktop_draws() {
         let base = crate::review::stand_in();
         for design in designs() {
@@ -171,6 +226,32 @@ mod tests {
                 assert!(
                     fb / d + 1 >= bottom && fb / d <= bottom + 1,
                     "bottom {fb} vs {bottom}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn what_a_creature_wears_goes_on_every_body_it_is_given() {
+        use formiga_core::{Accessory, AccessoryKind};
+        let base = crate::review::stand_in();
+        let hat = AccessoryArt::resolve(Accessory::Worn(AccessoryKind::PartyHat), [3; 32], &[]);
+        for design in designs() {
+            for detail in [1, DETAIL] {
+                let bare = intent_frame_hd(&design, &base, Intent::Idle, 0, true, true, detail);
+                let dressed = dressed_intent_frame(
+                    &design,
+                    &base,
+                    Some(hat),
+                    Intent::Idle,
+                    0,
+                    true,
+                    true,
+                    detail,
+                );
+                assert!(
+                    bare.rgba_bytes() != dressed.rgba_bytes(),
+                    "the hat shows at detail {detail}"
                 );
             }
         }

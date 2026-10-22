@@ -37,6 +37,24 @@ impl Layer {
     }
 }
 
+/// What a whole roll ([`Editor::roll_all`]) leaves as it is: the body (which plan, or which of
+/// Desktop's companion bodies) and each layer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Locks {
+    pub body: bool,
+    pub layers: [bool; 4],
+}
+
+impl Locks {
+    pub fn kept(&self, layer: Layer) -> bool {
+        self.layers[layer as usize]
+    }
+
+    pub fn keep(&mut self, layer: Layer) -> &mut bool {
+        &mut self.layers[layer as usize]
+    }
+}
+
 /// A small, fixed random number generator: the same seed always rolls the same design.
 #[derive(Clone, Copy, Debug)]
 pub struct Dice(u64);
@@ -273,48 +291,7 @@ impl Editor {
     /// and any set aside earlier that fit it again come back. A companion or an original look
     /// becomes a sculpted form in its colours.
     pub fn set_plan(&mut self, plan: Plan) {
-        self.change(None, |d, set_aside| {
-            let sculpt = match &d.form {
-                Form::Sculpted { sculpt } => {
-                    let mut sculpt = sculpt.clone();
-                    sculpt.plan = plan;
-                    sculpt
-                }
-                Form::Companion { recipe } => {
-                    let mut sculpt = Sculpt::starter(plan);
-                    sculpt.coat.primary = recipe.coat;
-                    sculpt.coat.secondary = shade(recipe.coat);
-                    sculpt.coat.accent = recipe.accent;
-                    sculpt.face_template = recipe.face_template.max(1);
-                    sculpt
-                }
-                Form::Original => Sculpt::starter(plan),
-            };
-            let mut sculpt = sculpt;
-            let (fits, unfit): (Vec<Part>, Vec<Part>) = sculpt
-                .parts
-                .iter()
-                .partition(|part| plan.has(part.kind.slot()));
-            sculpt.parts = fits;
-            let mut back = Vec::new();
-            set_aside.retain(|part| {
-                let slot = part.kind.slot();
-                if plan.has(slot) && sculpt.part(slot).is_none() {
-                    back.push(*part);
-                    false
-                } else {
-                    true
-                }
-            });
-            for part in back {
-                sculpt.fit(part);
-            }
-            for part in unfit {
-                set_aside.retain(|kept| kept.kind.slot() != part.kind.slot());
-                set_aside.push(part);
-            }
-            d.form = Form::Sculpted { sculpt };
-        });
+        self.change(None, |d, set_aside| put_on_plan(d, set_aside, plan));
     }
 
     /// Put the design on one of Desktop's companion plans, as a recipe.
@@ -344,33 +321,131 @@ impl Editor {
     }
 
     /// Roll one layer at random, leaving the rest. A plan is never changed by rolling parts or
-    /// colours, and the design keeps the values rolled, not the roll.
+    /// colours, and the design keeps the values rolled, not the roll. Rolled parts let go of any
+    /// set aside, so none from before the roll come back with a later body.
     pub fn randomize(&mut self, layer: Layer, seed: u32) {
         let mut dice = Dice::new(seed);
-        self.edit(None, |d| match &mut d.form {
-            Form::Sculpted { sculpt } => match layer {
-                Layer::Form => roll_shape(&mut sculpt.shape, &mut dice),
-                Layer::Parts => roll_parts(sculpt, &mut dice),
-                Layer::Finish => roll_finish(sculpt, &mut dice),
-                Layer::Face => {
-                    sculpt.face_template =
-                        dice.range(1, u32::from(formiga_core::FACE_TEMPLATES)) as u8;
-                    d.face = roll_face(&mut dice);
-                }
-            },
-            Form::Companion { recipe } => {
-                roll_recipe(recipe, layer, &mut dice);
-                if layer == Layer::Face {
-                    d.face = roll_face(&mut dice);
-                }
-            }
-            Form::Original => {
-                if layer == Layer::Face {
-                    d.face = roll_face(&mut dice);
-                }
+        self.change(None, |d, set_aside| {
+            roll_layer(d, layer, &mut dice);
+            if layer == Layer::Parts {
+                set_aside.clear();
             }
         });
     }
+
+    /// Roll everything at random but what `locks` keeps, as one change that undoes as one: a
+    /// new body of the same kind (another plan for a sculpted form, another of Desktop's bodies
+    /// for a companion), then each layer. A look from before recipes keeps its body.
+    pub fn roll_all(&mut self, locks: Locks, seed: u32) {
+        let mut dice = Dice::new(seed);
+        self.change(None, |d, set_aside| {
+            if !locks.body {
+                match &mut d.form {
+                    Form::Sculpted { .. } => {
+                        let plan = dice.pick(&Plan::ALL);
+                        put_on_plan(d, set_aside, plan);
+                    }
+                    Form::Companion { recipe } => {
+                        recipe.body = dice.pick(&BODIES);
+                        if recipe.archetype == 0 {
+                            recipe.archetype =
+                                formiga_core::BodyArchetype::for_body(recipe.body, false).number();
+                        }
+                    }
+                    Form::Original => {}
+                }
+            }
+            for layer in Layer::ALL {
+                if !locks.kept(layer) {
+                    roll_layer(d, layer, &mut dice);
+                }
+            }
+            // Parts rolled anew let go of any set aside, as a single roll of them does.
+            if !locks.kept(Layer::Parts) {
+                set_aside.clear();
+            }
+        });
+    }
+}
+
+/// Desktop's companion bodies, which a whole roll chooses among for a companion.
+const BODIES: [BodyPlan; 5] = [
+    BodyPlan::Round,
+    BodyPlan::Upright,
+    BodyPlan::Long,
+    BodyPlan::Winged,
+    BodyPlan::Blob,
+];
+
+/// Roll `layer` of `d` at random, leaving the rest.
+fn roll_layer(d: &mut Design, layer: Layer, dice: &mut Dice) {
+    match &mut d.form {
+        Form::Sculpted { sculpt } => match layer {
+            Layer::Form => roll_shape(&mut sculpt.shape, dice),
+            Layer::Parts => roll_parts(sculpt, dice),
+            Layer::Finish => roll_finish(sculpt, dice),
+            Layer::Face => {
+                sculpt.face_template = dice.range(1, u32::from(formiga_core::FACE_TEMPLATES)) as u8;
+                d.face = roll_face(dice);
+            }
+        },
+        Form::Companion { recipe } => {
+            roll_recipe(recipe, layer, dice);
+            if layer == Layer::Face {
+                d.face = roll_face(dice);
+            }
+        }
+        Form::Original => {
+            if layer == Layer::Face {
+                d.face = roll_face(dice);
+            }
+        }
+    }
+}
+
+/// `d` on `plan`, its parts that have no slot there set aside in `set_aside`, and any set aside
+/// earlier that fit again brought back (see [`Editor::set_plan`]).
+fn put_on_plan(d: &mut Design, set_aside: &mut Vec<Part>, plan: Plan) {
+    let sculpt = match &d.form {
+        Form::Sculpted { sculpt } => {
+            let mut sculpt = sculpt.clone();
+            sculpt.plan = plan;
+            sculpt
+        }
+        Form::Companion { recipe } => {
+            let mut sculpt = Sculpt::starter(plan);
+            sculpt.coat.primary = recipe.coat;
+            sculpt.coat.secondary = shade(recipe.coat);
+            sculpt.coat.accent = recipe.accent;
+            sculpt.face_template = recipe.face_template.max(1);
+            sculpt
+        }
+        Form::Original => Sculpt::starter(plan),
+    };
+    let mut sculpt = sculpt;
+    let (fits, unfit): (Vec<Part>, Vec<Part>) = sculpt
+        .parts
+        .iter()
+        .partition(|part| plan.has(part.kind.slot()));
+    sculpt.parts = fits;
+    let mut back = Vec::new();
+    set_aside.retain(|part| {
+        let slot = part.kind.slot();
+        if plan.has(slot) && sculpt.part(slot).is_none() {
+            back.push(*part);
+            false
+        } else {
+            true
+        }
+    });
+    for part in back {
+        sculpt.fit(part);
+    }
+    for part in unfit {
+        set_aside.retain(|kept| kept.kind.slot() != part.kind.slot());
+        set_aside.push(part);
+    }
+    d.form = Form::Sculpted { sculpt };
 }
 
 fn shade(rgb: [u8; 3]) -> [u8; 3] {
@@ -712,5 +787,101 @@ mod tests {
         assert_eq!(back.body, BodyPlan::Upright);
         assert_eq!(back.coat, recipe.coat);
         assert_eq!(editor.design().validate(), Ok(()));
+    }
+
+    #[test]
+    fn rolling_everything_keeps_what_is_locked_and_undoes_as_one() {
+        let fox = crate::presets::find("animal.red_fox").unwrap().design;
+        let Form::Sculpted { sculpt: was } = fox.form.clone() else {
+            panic!("the fox is sculpted")
+        };
+        let mut locks = Locks {
+            body: true,
+            ..Locks::default()
+        };
+        *locks.keep(Layer::Finish) = true;
+        *locks.keep(Layer::Face) = true;
+        for seed in 1..40 {
+            let mut editor = Editor::new(fox.clone(), None);
+            editor.roll_all(locks, seed);
+            let Form::Sculpted { sculpt } = &editor.design().form else {
+                panic!("still sculpted")
+            };
+            assert_eq!(sculpt.plan, was.plan, "the body is kept");
+            assert_eq!(sculpt.coat, was.coat, "the finish is kept");
+            assert_eq!(sculpt.markings, was.markings);
+            assert_eq!(sculpt.face_template, was.face_template, "the face is kept");
+            assert_eq!(editor.design().face, fox.face);
+            editor.undo();
+            assert_eq!(
+                editor.design(),
+                &fox.normalized(),
+                "one undo puts it all back"
+            );
+        }
+    }
+
+    #[test]
+    fn rolling_the_parts_lets_go_of_any_set_aside() {
+        // Paws set aside on a floater would otherwise come back with a later body, though the
+        // parts were rolled since.
+        let mut editor = Editor::new(panda(), None);
+        editor.set_plan(Plan::Floater);
+        assert!(!editor.set_aside().is_empty());
+        editor.randomize(Layer::Parts, 7);
+        assert!(editor.set_aside().is_empty());
+        for seed in 1..40 {
+            let mut editor = Editor::new(panda(), None);
+            editor.set_plan(Plan::Floater);
+            editor.roll_all(Locks::default(), seed);
+            assert!(editor.set_aside().is_empty(), "seed {seed}");
+            editor.undo();
+            assert!(
+                !editor.set_aside().is_empty(),
+                "undone, they are set aside again"
+            );
+        }
+        // Kept parts keep what was set aside too.
+        let mut locks = Locks {
+            body: true,
+            ..Locks::default()
+        };
+        *locks.keep(Layer::Parts) = true;
+        let mut editor = Editor::new(panda(), None);
+        editor.set_plan(Plan::Floater);
+        editor.roll_all(locks, 3);
+        assert!(!editor.set_aside().is_empty());
+    }
+
+    #[test]
+    fn rolling_everything_with_nothing_kept_finds_new_bodies_of_the_same_kind() {
+        let fox = crate::presets::find("animal.red_fox").unwrap().design;
+        let mut plans = std::collections::HashSet::new();
+        for seed in 1..60 {
+            let mut editor = Editor::new(fox.clone(), None);
+            editor.roll_all(Locks::default(), seed);
+            assert!(editor.design().validate().is_ok());
+            let Form::Sculpted { sculpt } = &editor.design().form else {
+                panic!("a sculpted form rolls to a sculpted form")
+            };
+            plans.insert(sculpt.plan);
+        }
+        assert!(plans.len() > 3, "{plans:?}");
+        let round = Design {
+            form: Form::Companion {
+                recipe: CreatureDesign::generated([5; 32], 0, None),
+            },
+            face: fox.face,
+        };
+        let mut bodies = std::collections::HashSet::new();
+        for seed in 1..60 {
+            let mut editor = Editor::new(round.clone(), None);
+            editor.roll_all(Locks::default(), seed);
+            let Form::Companion { recipe } = &editor.design().form else {
+                panic!("a companion rolls to a companion")
+            };
+            bodies.insert(recipe.body);
+        }
+        assert!(bodies.len() > 2, "{bodies:?}");
     }
 }
