@@ -3,6 +3,9 @@
 /.DS_Store
 *.log
 /*.png
+# What `--icon .` writes at the repository root.
+/FormigaFarm.icns
+/FormigaFarm.ico
 # Local [patch] overrides pointing at a Desktop checkout.
 /.cargo/config.toml
 

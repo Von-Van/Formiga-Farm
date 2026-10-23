@@ -7,7 +7,7 @@
 # can bring new versions of the crates Farm shares with it; the README names the tag, so check it.
 #
 # Usage:
-#   scripts/set-version.sh <version> [<desktop tag>]   e.g. scripts/set-version.sh 0.1.1 v0.67.3
+#   scripts/set-version.sh <version> [<desktop tag>]   e.g. scripts/set-version.sh 0.1.1 v0.67.14
 #   scripts/set-version.sh --check                     says whether every place agrees
 #
 # Tools used: cargo, perl, grep and sed.
@@ -49,7 +49,7 @@ new="${new#v}"
 new_tag="${2:-$tag}"
 [ "${new_tag#v}" = "$new_tag" ] && new_tag="v$new_tag"
 if ! [[ "$new" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || ! [[ "$new_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "usage: $(basename "$0") <version> [<desktop tag>]   e.g. $(basename "$0") 0.1.1 v0.67.3" >&2
+  echo "usage: $(basename "$0") <version> [<desktop tag>]   e.g. $(basename "$0") 0.1.1 v0.67.14" >&2
   echo "       $(basename "$0") --check" >&2
   exit 2
 fi
