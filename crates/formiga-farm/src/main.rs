@@ -2,6 +2,9 @@
 //! creature to reshape from its notebook page or on nothing at all from the studio, and hands
 //! Desktop a design to keep.
 
+// A window of its own on Windows, without a console window behind it.
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 mod app;
 mod drawing;
 mod editor;
