@@ -30,5 +30,9 @@ decides whether to keep it, and it never changes a creature's name, nature, frie
   a portable zip, each with a checksum. Once installed, Formiga Desktop finds Farm on its own.
   A signed build notarises the app itself, so the zip opens without a warning as well as the disk
   image; until builds are signed, open it the first time with Control-click → Open.
+- Opened on its own, from Applications or the Start menu, Farm says first that your own
+  companions come from Formiga, and how to open one in Farm ("Reshape in Formiga Farm" on a
+  companion's page, or "Draw one in Formiga Farm" in the studio), with a look around the sample
+  colony or Close. `--sample` and Desktop's sessions open as before.
 - Farm has its own icon: a slice of the ant farm in its wooden frame, with a Formiga sitting on
   the grass above the tunnels. The window, the Mac app and the Windows installer all wear it.

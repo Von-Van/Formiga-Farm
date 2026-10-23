@@ -28,7 +28,9 @@ const USAGE: &str = "\
 Usage: formiga-farm [--sample | --sample-edit <N> | --formiga-farm <SESSION DIRECTORY>
                      | --from-save <FILE> [--creature <N>]]
 
-  --sample                 Rehearse drawing a new Formiga for Desktop's sample colony (the default)
+  --sample                 Rehearse drawing a new Formiga for Desktop's sample colony. With no
+                           arguments at all Farm does too, under a welcome saying that your own
+                           companions come from Formiga
   --sample-edit <N>        Rehearse reshaping creature N of Desktop's sample colony
   --formiga-farm <DIR>     How Desktop opens Farm: the session it wrote
   --from-save <FILE>       Development only: rehearse with a Desktop colony file, which is only
@@ -77,9 +79,17 @@ struct Args {
     shelf: Option<Shelf>,
     compare: Option<String>,
     theme: Option<String>,
+    /// Farm was started with no arguments at all, as someone opening the app from Applications
+    /// or the Start menu starts it, rather than by Desktop or for development: the sample opens
+    /// under a welcome saying where a companion of the owner's own comes from.
+    welcome: bool,
 }
 
-fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Args>> {
+fn parse_args(args: impl Iterator<Item = String>) -> Result<Option<Args>> {
+    let mut args = args.peekable();
+    // Desktop always says how it opens Farm, and so does every development and review option,
+    // so only someone opening the app itself starts it with nothing at all.
+    let welcome = args.peek().is_none();
     let mut parsed = Args {
         source: Source::Sample,
         preset: None,
@@ -93,6 +103,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Args>> {
         shelf: None,
         compare: None,
         theme: None,
+        welcome,
     };
     let mut creature = None;
     let mut save = None;
@@ -358,6 +369,9 @@ fn main() -> Result<()> {
         Box::new(move |cc| {
             let mut app = FarmApp::new(&cc.egui_ctx, opening).map_err(|error| error.to_string())?;
             app.show(args.layer, args.intent, args.view);
+            if args.welcome {
+                app.welcome();
+            }
             if let Some(shelf) = args.shelf {
                 app.shelf(shelf);
             }
@@ -383,4 +397,35 @@ fn main() -> Result<()> {
         }),
     )
     .map_err(|error| anyhow::anyhow!("the window could not open: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Args {
+        parse_args(args.iter().map(|a| (*a).to_owned()))
+            .unwrap()
+            .unwrap()
+    }
+
+    #[test]
+    fn only_farm_opened_on_its_own_says_where_companions_come_from() {
+        let opened = parse(&[]);
+        assert!(opened.welcome, "opened from Applications or the Start menu");
+        assert!(matches!(opened.source, Source::Sample));
+        let sample = parse(&["--sample"]);
+        assert!(!sample.welcome, "the sample asked for by name");
+        let session = parse(&[formiga_farm_contract::LAUNCH_ARGUMENT, "/farm/ab"]);
+        assert!(!session.welcome, "a session from Desktop");
+        assert!(matches!(session.source, Source::Session(_)));
+        for args in [
+            &["--sample-edit", "1"][..],
+            &["--from-save", "colony.json"],
+            &["--preset", "form.floater"],
+            &["--snap", "window.png"],
+        ] {
+            assert!(!parse(args).welcome, "{args:?}");
+        }
+    }
 }

@@ -78,6 +78,27 @@ impl View {
     }
 }
 
+/// What Farm says when it was opened on its own, rather than by Formiga.
+const WELCOME_TITLE: &str = "Your companions come from Formiga";
+const WELCOME_LOOK_AROUND: &str = "Look around with the sample colony";
+const WELCOME_CLOSE: &str = "Close";
+
+/// How a companion of the owner's own comes to Farm, in the words Formiga's notebook uses.
+fn welcome_words() -> String {
+    let icon = if cfg!(target_os = "macos") {
+        "the menu bar"
+    } else {
+        "the notification area"
+    };
+    format!(
+        "Formiga Farm opens on one of your own companions from Formiga. Open the Formiga icon in \
+         {icon}, choose \u{201c}Your colony\u{2026}\u{201d}, and on a companion's page choose \
+         \u{201c}Reshape in Formiga Farm\u{201d}, or \u{201c}Draw one in Formiga Farm\u{201d} in the \
+         Creature studio. Meanwhile the sample colony is here to try things on; nothing you do \
+         with it changes anyone."
+    )
+}
+
 enum Dialog {
     /// The creature's look changed in Desktop after the session opened.
     Stale { current: Design, revision: String },
@@ -89,6 +110,9 @@ enum Dialog {
     Rename { what: Deletable, name: String },
     /// Desktop ended the session.
     Recalled,
+    /// Farm was opened on its own, not by Formiga: where a companion of the owner's own comes
+    /// from, over the sample colony's rehearsal.
+    Welcome,
     /// A picture being read.
     Reading { name: String },
     /// A design code being pasted, and why the last one could not be read.
@@ -296,6 +320,12 @@ impl FarmApp {
     }
 
     /// For review only: open on a layer, a pose or a view.
+    /// Opens on the welcome: Farm was opened on its own, so the companion on the bench is the
+    /// sample colony's, and the welcome says how one of the owner's own comes.
+    pub fn welcome(&mut self) {
+        self.dialog = Some(Dialog::Welcome);
+    }
+
     pub fn show(&mut self, layer: Option<Layer>, intent: Option<Intent>, view: Option<View>) {
         if let Some(layer) = layer {
             self.layer = layer;
@@ -1022,6 +1052,20 @@ impl FarmApp {
                     takes,
                     picture,
                 } => keep_open = self.takes_dialog(ui, name, takes, picture.as_ref()),
+                Dialog::Welcome => {
+                    ui.heading(WELCOME_TITLE);
+                    ui.label(welcome_words());
+                    ui.add_space(8.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button(WELCOME_LOOK_AROUND).clicked() {
+                            keep_open = false;
+                        }
+                        if ui.button(WELCOME_CLOSE).clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            keep_open = false;
+                        }
+                    });
+                }
                 Dialog::Recalled => {
                     ui.heading("Desktop has closed this session");
                     ui.label("Nothing more will be applied. Your design is kept in Drafts for next time.");
@@ -1185,6 +1229,21 @@ impl Drop for FarmApp {
 mod tests {
     use super::*;
     use formiga_core::forms::Form;
+
+    #[test]
+    fn farm_opened_on_its_own_opens_on_the_welcome() {
+        let mut farm = app(None);
+        assert!(farm.dialog.is_none());
+        farm.welcome();
+        assert!(matches!(farm.dialog, Some(Dialog::Welcome)));
+        let words = welcome_words();
+        assert!(words.contains("\u{201c}Reshape in Formiga Farm\u{201d}"));
+        assert!(words.contains("\u{201c}Draw one in Formiga Farm\u{201d}"));
+        assert!(
+            !words.contains("formigaworld"),
+            "Farm is not offered on the website yet"
+        );
+    }
 
     fn app(edit: Option<usize>) -> FarmApp {
         let (rehearsal, snapshot) = crate::session::Rehearsal::open(
