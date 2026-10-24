@@ -227,6 +227,12 @@ impl PersonalPreset {
     }
 }
 
+/// The order drafts are shown in: the one kept last first, and by id among those kept the same
+/// second.
+fn newest_first(a: &Draft, b: &Draft) -> std::cmp::Ordering {
+    b.saved_at_utc.cmp(&a.saved_at_utc).then(a.id.cmp(&b.id))
+}
+
 /// Farm's own shelves, kept in its data folder, or nowhere if it has none.
 pub struct Store {
     data: Option<PathBuf>,
@@ -257,7 +263,7 @@ impl Store {
     /// so that [`Self::save_draft`] can see which to clear away.
     fn every_draft(&self) -> Vec<Draft> {
         let mut drafts: Vec<Draft> = read_all(self.dir(DRAFTS), MAX_DRAFTS * 2, Draft::valid);
-        drafts.sort_by(|a, b| b.saved_at_utc.cmp(&a.saved_at_utc).then(a.id.cmp(&b.id)));
+        drafts.sort_by(newest_first);
         drafts
     }
 
@@ -300,19 +306,38 @@ impl Store {
         delete(self.dir(PALETTES), id);
     }
 
-    /// Keep `draft`, whole, stamped with the time. Returns the drafts let go to keep the shelf
-    /// to its bound, so the owner can be told which; nothing is let go without a word.
-    pub fn save_draft(&self, draft: &mut Draft) -> std::io::Result<Vec<Draft>> {
+    /// Keep `draft`, whole, stamped with the time, and put it on `shelf`, the drafts as last
+    /// read, newest first. Returns the drafts let go to keep the shelf to its bound, so the owner
+    /// can be told which; nothing is let go without a word. The drafts are read again only when
+    /// the folder holds other drafts than the shelf, so keeping one as the owner works reads
+    /// nothing else.
+    pub fn save_draft(
+        &self,
+        draft: &mut Draft,
+        shelf: &mut Vec<Draft>,
+    ) -> std::io::Result<Vec<Draft>> {
         draft.saved_at_utc = now();
         write(self.dir(DRAFTS), &draft.id, draft)?;
+        let Some(dir) = self.dir(DRAFTS) else {
+            return Ok(Vec::new());
+        };
+        shelf.retain(|kept| kept.id != draft.id);
+        shelf.push(draft.clone());
+        if kept_files(&dir) == shelf.len() {
+            shelf.sort_by(newest_first);
+        } else {
+            *shelf = self.every_draft();
+        }
         // Keep the shelf to its bound: the oldest go first, and never the one just kept, whatever
         // the clock said when the others were.
         let mut let_go = Vec::new();
-        for old in self.every_draft().into_iter().skip(MAX_DRAFTS) {
-            if old.id != draft.id {
-                self.delete_draft(&old.id);
-                let_go.push(old);
-            }
+        while shelf.len() > MAX_DRAFTS {
+            let Some(oldest) = shelf.iter().rposition(|old| old.id != draft.id) else {
+                break;
+            };
+            let old = shelf.remove(oldest);
+            self.delete_draft(&old.id);
+            let_go.push(old);
         }
         Ok(let_go)
     }
@@ -384,6 +409,25 @@ fn delete(dir: Option<PathBuf>, id: &str) {
     }
 }
 
+/// Whether `path` is named as Farm names a file it keeps: an id, as JSON.
+fn is_kept_file(path: &Path) -> bool {
+    path.extension().is_some_and(|ext| ext == "json")
+        && path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .is_some_and(is_id)
+}
+
+/// How many files `dir` holds that are named as Farm names those it keeps, by their names alone.
+fn kept_files(dir: &Path) -> usize {
+    std::fs::read_dir(dir).map_or(0, |entries| {
+        entries
+            .filter_map(Result::ok)
+            .filter(|entry| is_kept_file(&entry.path()))
+            .count()
+    })
+}
+
 /// What reads of the `most` files in `dir` written last. Those are read rather than the first by
 /// name, so the file just written is always among them, however many others there are.
 fn read_all<T: for<'de> Deserialize<'de>>(
@@ -403,13 +447,7 @@ fn read_all<T: for<'de> Deserialize<'de>>(
             let written = entry.metadata().and_then(|meta| meta.modified()).ok();
             (written, entry.path())
         })
-        .filter(|(_, path)| {
-            path.extension().is_some_and(|ext| ext == "json")
-                && path
-                    .file_stem()
-                    .and_then(|stem| stem.to_str())
-                    .is_some_and(is_id)
-        })
+        .filter(|(_, path)| is_kept_file(path))
         .collect();
     paths.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let mut kept = Vec::new();
@@ -506,7 +544,7 @@ mod tests {
         let dir = scratch("drafts");
         let store = Store::new(Some(dir.clone()));
         let mut draft = Draft::new("Pip", crate::presets::blank(), Some("blank".into()), None);
-        store.save_draft(&mut draft).unwrap();
+        store.save_draft(&mut draft, &mut Vec::new()).unwrap();
         assert_eq!(store.drafts(), vec![draft.clone()]);
         store.delete_draft(&draft.id);
         assert!(store.drafts().is_empty());
@@ -518,7 +556,7 @@ mod tests {
         let dir = scratch("corrupt");
         let store = Store::new(Some(dir.clone()));
         let mut good = Draft::new("Good", crate::presets::blank(), None, None);
-        store.save_draft(&mut good).unwrap();
+        store.save_draft(&mut good, &mut Vec::new()).unwrap();
         let bad = dir.join(DRAFTS).join("0123456789abcdef.json");
         std::fs::write(&bad, b"{ this is not a draft").unwrap();
         let mut odd = Draft::new("Odd", crate::presets::blank(), None, None);
@@ -549,7 +587,7 @@ mod tests {
         }
         let mut draft = Draft::new("New", crate::presets::blank(), None, None);
         draft.id = "ffffffffffffffff".into();
-        let let_go = store.save_draft(&mut draft).unwrap();
+        let let_go = store.save_draft(&mut draft, &mut store.drafts()).unwrap();
         let drafts = store.drafts();
         assert_eq!(drafts.len(), MAX_DRAFTS);
         let oldest_id = format!("{:016x}", MAX_DRAFTS - 1);
@@ -587,8 +625,45 @@ mod tests {
         }
         let mut draft = Draft::new("New", crate::presets::blank(), None, None);
         draft.id = "ffffffffffffffff".into();
-        store.save_draft(&mut draft).unwrap();
+        store.save_draft(&mut draft, &mut Vec::new()).unwrap();
         assert_eq!(store.drafts()[0], draft);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn keeping_a_draft_reads_no_other_when_the_shelf_already_holds_them_all() {
+        let dir = scratch("in-memory");
+        let store = Store::new(Some(dir.clone()));
+        let mut shelf = Vec::new();
+        let mut first = Draft::new("First", crate::presets::blank(), None, None);
+        store.save_draft(&mut first, &mut shelf).unwrap();
+        let fox = crate::presets::find("animal.red_fox").unwrap().design;
+        let mut second = Draft::new("Second", fox, None, None);
+        store.save_draft(&mut second, &mut shelf).unwrap();
+        assert_eq!(shelf, store.drafts(), "the shelf is what reading it gives");
+        // Spoil the first draft's file. Keeping the second again does not read it, or it would
+        // be set aside.
+        let first_path = dir.join(DRAFTS).join(format!("{}.json", first.id));
+        std::fs::write(&first_path, b"{ spoilt").unwrap();
+        second.name = "Second again".into();
+        assert!(
+            store
+                .save_draft(&mut second, &mut shelf)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(first_path.exists(), "nothing else was read");
+        assert_eq!(shelf.len(), 2);
+        assert!(shelf.iter().any(|draft| draft.name == "Second again"));
+        // A shelf that does not know every draft in the folder is read again whole.
+        let mut stale = vec![second.clone()];
+        store.save_draft(&mut second, &mut stale).unwrap();
+        assert_eq!(
+            stale,
+            vec![second],
+            "the spoilt one is set aside as it is read"
+        );
+        assert!(!first_path.exists());
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -622,10 +697,10 @@ mod tests {
         let store = Store::new(Some(dir.clone()));
         let fox = crate::presets::find("animal.red_fox").unwrap().design;
         let mut older = Draft::new("Older", fox.clone(), None, None);
-        store.save_draft(&mut older).unwrap();
+        store.save_draft(&mut older, &mut Vec::new()).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1100));
         let mut newer = Draft::new("Newer", crate::presets::blank(), None, None);
-        store.save_draft(&mut newer).unwrap();
+        store.save_draft(&mut newer, &mut Vec::new()).unwrap();
         let renamed = store.rename_draft(&older.id, "  Russet\n").unwrap();
         assert_eq!(renamed.name, "Russet");
         let drafts = store.drafts();

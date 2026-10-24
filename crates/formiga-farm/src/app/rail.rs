@@ -322,9 +322,8 @@ impl FarmApp {
                         draft.preset.clone(),
                         draft.for_name.clone(),
                     );
-                    match self.store.save_draft(&mut copy) {
+                    match self.store.save_draft(&mut copy, &mut self.drafts) {
                         Ok(let_go) => {
-                            self.drafts = self.store.drafts();
                             if !self.say_let_go(&let_go) {
                                 self.say(
                                     format!("Kept a copy as \u{201c}{}\u{201d}.", copy.name),

@@ -397,10 +397,9 @@ impl FarmApp {
         }
         self.draft.design = self.editor.design().clone();
         self.draft.preset = self.editor.preset.clone();
-        match self.store.save_draft(&mut self.draft) {
+        match self.store.save_draft(&mut self.draft, &mut self.drafts) {
             Ok(let_go) => {
                 self.kept_changes = self.editor.changes;
-                self.drafts = self.store.drafts();
                 self.say_let_go(&let_go)
             }
             Err(error) => {
@@ -1317,10 +1316,11 @@ mod tests {
         let dir =
             std::env::temp_dir().join(format!("formiga-farm-app-full-{}", crate::store::new_id()));
         let store = Store::new(Some(dir.clone()));
+        let mut shelf = Vec::new();
         for index in 0..crate::store::MAX_DRAFTS {
             let mut old = Draft::new("Old", crate::presets::blank(), None, None);
             old.id = format!("1{index:015x}");
-            store.save_draft(&mut old).unwrap();
+            store.save_draft(&mut old, &mut shelf).unwrap();
         }
         let mut app = app(None);
         app.store = store;
