@@ -27,6 +27,11 @@ use std::path::PathBuf;
 /// How long a short message stays up, in seconds.
 const TOAST_SECS: f64 = 6.0;
 
+/// How long Farm waits for Desktop to answer a design before the owner may apply again, in
+/// seconds. Desktop leaves a design unanswered while it cannot write the colony, and looks again
+/// at the next one Farm hands it.
+const ANSWER_SECS: f64 = 4.0;
+
 /// Below this width the shelves and the inspector become drawers, one open at a time.
 const NARROW: f32 = 980.0;
 
@@ -465,8 +470,16 @@ impl FarmApp {
         }
     }
 
+    /// Whether a design was just handed to Desktop and is still being waited on. Once Desktop
+    /// has been given a while to answer, the owner may apply again: Desktop leaves a design
+    /// unanswered while it cannot write the colony, and weighs the next one Farm hands it.
+    fn waiting(&self) -> bool {
+        self.pending
+            .is_some_and(|(_, since)| self.clock - since < ANSWER_SECS)
+    }
+
     fn apply(&mut self) {
-        if self.pending.is_some() || notices::blocked(self.notices()) {
+        if self.waiting() || notices::blocked(self.notices()) {
             return;
         }
         let kind = match &self.snapshot.mode {
@@ -757,7 +770,7 @@ impl FarmApp {
                     FarmMode::EditExisting { creature } => format!("Apply to {}", creature.name),
                     FarmMode::Create { .. } => "Add to colony".to_owned(),
                 };
-                let waiting = self.pending.is_some();
+                let waiting = self.waiting();
                 let apply = egui::Button::new(egui::RichText::new(label).strong())
                     .fill(if blocked { ink.card } else { ink.chosen.gamma_multiply(0.35) });
                 let response = ui.add_enabled(!blocked && !waiting, apply);
@@ -1113,7 +1126,7 @@ impl FarmApp {
         let ink = style::ink(ui.visuals().dark_mode);
         let (text, color) = match (&self.toast, waiting) {
             (_, Some(waited)) if waited > 4.0 && !self.host.is_rehearsal() => (
-                "Desktop has the design. If it is busy, it will look at it when Farm closes."
+                "Desktop has the design. If it is busy, it will look at it when you apply again or when Farm closes."
                     .to_owned(),
                 ink.faint,
             ),
@@ -1412,6 +1425,83 @@ mod tests {
         assert_eq!(second, app.editor.design().revision());
         assert!(!app.pictures.has_thumb(&first));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A session opened by Desktop on the sample colony's first creature, in a scratch folder,
+    /// with nobody answering in Desktop's place: the folder and the session's seal come too.
+    fn visited() -> (FarmApp, PathBuf, formiga_farm_contract::SessionSeal) {
+        use formiga_farm_contract::{SNAPSHOT_FILE, encode, write_document};
+        let snapshot = formiga_farm_contract::sample::edit_snapshot(0);
+        let root =
+            std::env::temp_dir().join(format!("formiga-farm-app-visit-{}", crate::store::new_id()));
+        let dir = root.join(snapshot.session_id.as_str());
+        std::fs::create_dir_all(&dir).unwrap();
+        write_document(&dir.join(SNAPSHOT_FILE), &snapshot).unwrap();
+        let seal = formiga_farm_contract::SessionSeal::of(&snapshot, &encode(&snapshot).unwrap());
+        let (visit, snapshot) = crate::session::arrive(&dir, false).unwrap();
+        let app = FarmApp::new(
+            &egui::Context::default(),
+            Opening {
+                snapshot,
+                host: Host::Desktop(visit),
+                store: Store::new(None),
+                open: None,
+                start: None,
+            },
+        )
+        .unwrap();
+        (app, dir, seal)
+    }
+
+    /// Desktop's verdict on proposal `serial`, written as Desktop writes it.
+    fn answer(
+        dir: &std::path::Path,
+        seal: &formiga_farm_contract::SessionSeal,
+        serial: u32,
+        verdict: Verdict,
+    ) {
+        let verdict =
+            formiga_farm_contract::FarmVerdict::new(seal, serial, crate::session::now(), verdict);
+        formiga_farm_contract::write_document(
+            &dir.join(formiga_farm_contract::VERDICT_FILE),
+            &verdict,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_design_desktop_leaves_unanswered_can_be_applied_again_after_a_while() {
+        let (mut app, dir, seal) = visited();
+        app.editor.randomize(Layer::Finish, 9);
+        app.apply();
+        assert_eq!(app.pending.map(|(serial, _)| serial), Some(1));
+        // Straight away, Desktop is still being waited on.
+        app.apply();
+        assert_eq!(app.pending.map(|(serial, _)| serial), Some(1));
+        app.listen(&egui::Context::default());
+        assert!(app.pending.is_some(), "nothing heard yet");
+        // Desktop could not write the colony and left it unanswered. A while later the owner
+        // applies again, as the next serial, which Desktop takes as news.
+        app.clock += ANSWER_SECS;
+        assert!(!app.waiting());
+        app.apply();
+        assert_eq!(app.pending.map(|(serial, _)| serial), Some(2));
+        let (proposal, _) = formiga_farm_contract::read_document::<
+            formiga_farm_contract::FarmProposal,
+        >(&dir.join(formiga_farm_contract::PROPOSAL_FILE))
+        .unwrap();
+        assert_eq!(proposal.serial, 2);
+        // A late answer to the first says nothing about the second.
+        answer(&dir, &seal, 1, Verdict::Unavailable);
+        app.listen(&egui::Context::default());
+        assert!(app.pending.is_some());
+        // Desktop keeps the second, and Farm hears so.
+        let revision = app.editor.design().revision();
+        answer(&dir, &seal, 2, Verdict::Kept { revision });
+        app.listen(&egui::Context::default());
+        assert!(app.pending.is_none());
+        assert!(app.toast.as_ref().is_some_and(|toast| !toast.trouble));
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
     }
 
     #[test]
