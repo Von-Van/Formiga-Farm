@@ -179,6 +179,10 @@ pub struct FarmApp {
     presets: Vec<Preset>,
     drafts: Vec<Draft>,
     mine: Vec<PersonalPreset>,
+    /// Counts the changes to the drafts and personal presets, so the shelf shown is made again
+    /// only when they change.
+    shelves: u64,
+    listing: rail::Listing,
     palettes: Vec<crate::store::Palette>,
     notices: (u64, Vec<Notice>),
     clock: f64,
@@ -288,6 +292,8 @@ impl FarmApp {
             presets: crate::presets::all(),
             drafts,
             mine,
+            shelves: 0,
+            listing: rail::Listing::default(),
             palettes,
             notices: (u64::MAX, Vec::new()),
             clock: 0.0,
@@ -400,6 +406,7 @@ impl FarmApp {
         match self.store.save_draft(&mut self.draft, &mut self.drafts) {
             Ok(let_go) => {
                 self.kept_changes = self.editor.changes;
+                self.shelves += 1;
                 self.say_let_go(&let_go)
             }
             Err(error) => {
@@ -407,6 +414,18 @@ impl FarmApp {
                 true
             }
         }
+    }
+
+    /// Read the owner's drafts again, after one was renamed or thrown away.
+    fn reload_drafts(&mut self) {
+        self.drafts = self.store.drafts();
+        self.shelves += 1;
+    }
+
+    /// Read the owner's own presets again, after one was kept, renamed or thrown away.
+    fn reload_presets(&mut self) {
+        self.mine = self.store.presets();
+        self.shelves += 1;
     }
 
     /// Name the draft a full shelf let go to keep another, if it let one go. Returns whether it
@@ -853,7 +872,7 @@ impl FarmApp {
         let preset = PersonalPreset::new(name, self.editor.design().clone());
         match self.store.save_preset(&preset) {
             Ok(()) => {
-                self.mine = self.store.presets();
+                self.reload_presets();
                 self.say(
                     format!("Kept \u{201c}{}\u{201d} in My presets.", preset.name),
                     false,
@@ -983,7 +1002,7 @@ impl FarmApp {
                             match what {
                                 Deletable::Draft(id) => {
                                     self.store.delete_draft(id);
-                                    self.drafts = self.store.drafts();
+                                    self.reload_drafts();
                                     if *id == self.draft.id {
                                         // The design on the bench is kept as a fresh draft.
                                         self.draft.id = crate::store::new_id();
@@ -992,7 +1011,7 @@ impl FarmApp {
                                 }
                                 Deletable::Preset(id) => {
                                     self.store.delete_preset(id);
-                                    self.mine = self.store.presets();
+                                    self.reload_presets();
                                 }
                             }
                             keep_open = false;
@@ -1020,12 +1039,12 @@ impl FarmApp {
                                         if draft.id == self.draft.id {
                                             self.draft.name = draft.name;
                                         }
-                                        self.drafts = self.store.drafts();
+                                        self.reload_drafts();
                                     })
                                 }
                                 Deletable::Preset(id) => {
                                     self.store.rename_preset(id, &text).map(|_| {
-                                        self.mine = self.store.presets();
+                                        self.reload_presets();
                                     })
                                 }
                             };
@@ -1334,6 +1353,64 @@ mod tests {
                 .is_some_and(|t| t.trouble && t.text.contains("Old") && t.text.contains("let go")),
             "the explicit save still names the draft let go"
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_creature_as_they_are_is_pictured_afresh_once_desktop_keeps_a_new_look() {
+        let ctx = egui::Context::default();
+        let mut app = app(Some(0));
+        app.refresh_listing();
+        let before = app.listing.entries[0].key.clone();
+        for entry in &app.listing.entries {
+            let _ = app
+                .pictures
+                .thumb(&ctx, &entry.key, &entry.design, &app.base);
+        }
+        let preset = app.listing.entries[1].key.clone();
+        let orca = crate::presets::find("animal.orca").unwrap().design;
+        app.editor
+            .start_from(orca.clone(), Some("animal.orca".into()));
+        app.apply();
+        app.listen(&ctx);
+        app.refresh_listing();
+        assert_eq!(app.listing.entries[0].key, orca.revision());
+        assert!(
+            !app.pictures.has_thumb(&before),
+            "the old look's picture is let go"
+        );
+        // A preset's picture is kept, even on another shelf, to show again.
+        app.shelf = Shelf::Animals;
+        app.refresh_listing();
+        assert!(app.pictures.has_thumb(&preset));
+    }
+
+    #[test]
+    fn a_draft_kept_again_is_pictured_afresh_and_its_old_picture_let_go() {
+        let ctx = egui::Context::default();
+        let dir = std::env::temp_dir().join(format!(
+            "formiga-farm-app-thumbs-{}",
+            crate::store::new_id()
+        ));
+        let mut app = app(None);
+        app.store = Store::new(Some(dir.clone()));
+        app.shelf = Shelf::Drafts;
+        app.editor.randomize(Layer::Finish, 9);
+        app.keep_draft_now();
+        app.refresh_listing();
+        let first = app.listing.entries[0].key.clone();
+        let _ = app
+            .pictures
+            .thumb(&ctx, &first, &app.listing.entries[0].design, &app.base);
+        // Kept again within the same second, with a different look.
+        app.editor.randomize(Layer::Finish, 10);
+        app.keep_draft_now();
+        app.refresh_listing();
+        assert_eq!(app.listing.entries.len(), 1);
+        let second = app.listing.entries[0].key.clone();
+        assert_ne!(first, second);
+        assert_eq!(second, app.editor.design().revision());
+        assert!(!app.pictures.has_thumb(&first));
         let _ = std::fs::remove_dir_all(dir);
     }
 

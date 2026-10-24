@@ -142,6 +142,17 @@ impl Pictures {
             .retain(|(design, _, _), _| *design != u64::MAX);
     }
 
+    /// Let go of the small pictures whose names `keep` no longer wants.
+    pub fn keep_thumbs(&mut self, keep: impl Fn(&str) -> bool) {
+        self.thumbs.retain(|name, _| keep(name));
+    }
+
+    /// Whether a small picture is kept under `name`.
+    #[cfg(test)]
+    pub fn has_thumb(&self, name: &str) -> bool {
+        self.thumbs.contains_key(name)
+    }
+
     /// A small picture of `design` at rest, cropped to the creature, kept under `name`.
     pub fn thumb(
         &mut self,
@@ -301,5 +312,17 @@ mod tests {
         assert_eq!(asked.get(), 3);
         assert_eq!(pictures.baselines.len(), 1);
         assert!(pictures.frames.keys().all(|key| key.design == 2));
+    }
+
+    #[test]
+    fn small_pictures_no_longer_wanted_are_let_go() {
+        let ctx = egui::Context::default();
+        let base = crate::review::stand_in();
+        let blank = crate::presets::blank();
+        let mut pictures = Pictures::default();
+        let _ = pictures.thumb(&ctx, "kept", &blank, &base);
+        let _ = pictures.thumb(&ctx, "stale", &blank, &base);
+        pictures.keep_thumbs(|name| name == "kept");
+        assert_eq!(pictures.thumbs.keys().collect::<Vec<_>>(), ["kept"]);
     }
 }
