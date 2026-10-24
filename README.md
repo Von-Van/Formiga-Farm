@@ -165,7 +165,7 @@ Rust 1.97.1. The shared crates come from Formiga Desktop by one release tag, `v0
 CI runs on macOS and Windows:
 
 ```bash
-cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
+cargo fmt --all --check && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --workspace --locked
 ```
 
 ### Packaging
@@ -177,13 +177,13 @@ cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings
 
 Both scripts ask the built binary for the Farm version it reads (`--farm-version`) and for its
 icon (`--icon <folder>`), so a package can never claim a version it does not read. Pushing a `v*`
-tag runs both on GitHub's own macOS and Windows machines and publishes a release with every
-package and its checksum, its notes taken from that version's section of
+tag runs both on GitHub's own macOS and Windows machines and, once the tests pass there too,
+publishes a release with every package, its checksum and the licence inside, its notes taken from that version's section of
 [CHANGELOG.md](CHANGELOG.md); a pull request that changes the packaging builds every package the
 same way without publishing anything. Both sign when `FORMIGA_CODESIGN_IDENTITY` (and
 `FORMIGA_NOTARY_PROFILE`) or `FORMIGA_SIGNTOOL_CERT_SHA1` is set, and otherwise ship unsigned.
 `scripts/set-version.sh <version> [<desktop tag>]` writes a new version, or a new Desktop tag,
-everywhere it is named; `--check` says whether every place agrees.
+everywhere it is named; `--check` says whether every place agrees, and a release runs it first.
 
 ## License
 

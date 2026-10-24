@@ -8,6 +8,7 @@ use formiga_art::Canvas;
 use formiga_art::forms::{DesignRenderer, Intent};
 use formiga_core::AppearanceGenome;
 use formiga_core::forms::{Design, Form};
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 pub fn texture(ctx: &egui::Context, name: &str, canvas: &Canvas) -> egui::TextureHandle {
@@ -45,9 +46,16 @@ pub struct FrameKey {
     pub dressed: bool,
 }
 
+/// Which design's resting baseline: the editor's change count or one of the other design keys
+/// of [`FrameKey::design`], whether it is drawn as it travels, and whether motion is reduced.
+type BaselineKey = (u64, bool, bool);
+
 #[derive(Default)]
 pub struct Pictures {
     frames: HashMap<FrameKey, egui::TextureHandle>,
+    /// How far above the bottom of its frame each design stands at rest, worked out once: for a
+    /// sculpted form that is a whole drawing, and for a companion every frame of several poses.
+    baselines: HashMap<BaselineKey, u32>,
     /// The change count the frames were drawn for.
     drawn_for: u64,
     thumbs: HashMap<String, (egui::TextureHandle, egui::Vec2)>,
@@ -58,34 +66,48 @@ pub struct Pictures {
 }
 
 impl Pictures {
-    /// One frame of `design`, drawn if it has not been already.
+    /// One frame of a design, drawn if it has not been already, and how far above the bottom of
+    /// the frame the design stands at rest. `design` is asked for only when something has to be
+    /// drawn or worked out, so a design shown again and again is not made again each time.
     #[allow(clippy::too_many_arguments)]
-    pub fn frame(
+    pub fn frame<'d>(
         &mut self,
         ctx: &egui::Context,
-        design: &Design,
         base: &AppearanceGenome,
         key: FrameKey,
         current: u64,
         reduce_motion: bool,
         dress: Option<formiga_art::AccessoryArt>,
-    ) -> egui::TextureHandle {
+        design: impl FnOnce() -> Cow<'d, Design>,
+    ) -> (egui::TextureHandle, u32) {
         if self.drawn_for != current {
-            self.frames
-                .retain(|key, _| key.design == u64::MAX || key.design == COMPARED);
+            let kept = |design: u64| design == u64::MAX || design == COMPARED;
+            self.frames.retain(|key, _| kept(key.design));
+            self.baselines.retain(|(design, _, _), _| kept(*design));
             self.drawn_for = current;
         }
+        let baseline_key = (key.design, key.travels, reduce_motion);
+        if let (Some(texture), Some(baseline)) =
+            (self.frames.get(&key), self.baselines.get(&baseline_key))
+        {
+            return (texture.clone(), *baseline);
+        }
+        let design = design();
+        let baseline = *self
+            .baselines
+            .entry(baseline_key)
+            .or_insert_with(|| DesignRenderer::resting_baseline(&design, base, reduce_motion));
         if let Some(texture) = self.frames.get(&key) {
-            return texture.clone();
+            return (texture.clone(), baseline);
         }
         // A creature that keeps its body is Desktop's own pixels, drawn larger on screen.
-        let detail = if key.detail > 1 && drawn_hd(design) {
+        let detail = if key.detail > 1 && drawn_hd(&design) {
             key.detail
         } else {
             1
         };
         let mut canvas = crate::drawing::dressed_intent_frame(
-            design,
+            &design,
             base,
             dress.filter(|_| key.dressed),
             key.intent,
@@ -102,18 +124,33 @@ impl Pictures {
             self.frames.clear();
         }
         self.frames.insert(key, texture.clone());
-        texture
+        (texture, baseline)
     }
 
-    /// Forget the frames of the design as it was, when that changes.
     /// Let go of the frames of a design shown beside the workbench's, which are kept as
     /// [`COMPARED`].
     pub fn forget_compared(&mut self) {
         self.frames.retain(|key, _| key.design != COMPARED);
+        self.baselines
+            .retain(|(design, _, _), _| *design != COMPARED);
     }
 
+    /// Forget the frames of the design as it was, when that changes.
     pub fn forget_before(&mut self) {
         self.frames.retain(|key, _| key.design != u64::MAX);
+        self.baselines
+            .retain(|(design, _, _), _| *design != u64::MAX);
+    }
+
+    /// Let go of the small pictures whose names `keep` no longer wants.
+    pub fn keep_thumbs(&mut self, keep: impl Fn(&str) -> bool) {
+        self.thumbs.retain(|name, _| keep(name));
+    }
+
+    /// Whether a small picture is kept under `name`.
+    #[cfg(test)]
+    pub fn has_thumb(&self, name: &str) -> bool {
+        self.thumbs.contains_key(name)
     }
 
     /// A small picture of `design` at rest, cropped to the creature, kept under `name`.
@@ -223,4 +260,69 @@ fn crop(canvas: &Canvas) -> Canvas {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(design: u64, frame: u8) -> FrameKey {
+        FrameKey {
+            design,
+            intent: Intent::Idle,
+            frame,
+            facing_right: true,
+            outlined: false,
+            detail: 1,
+            travels: false,
+            dressed: false,
+        }
+    }
+
+    #[test]
+    fn a_design_is_drawn_and_its_baseline_worked_out_once_until_it_changes() {
+        let ctx = egui::Context::default();
+        let base = crate::review::stand_in();
+        let whale = crate::presets::find("animal.blue_whale").unwrap().design;
+        let mut pictures = Pictures::default();
+        let asked = std::cell::Cell::new(0);
+        let show = |pictures: &mut Pictures, key: FrameKey, current: u64| {
+            pictures
+                .frame(&ctx, &base, key, current, false, None, || {
+                    asked.set(asked.get() + 1);
+                    Cow::Borrowed(&whale)
+                })
+                .1
+        };
+        let baseline = show(&mut pictures, key(1, 0), 1);
+        assert_eq!(
+            baseline,
+            DesignRenderer::resting_baseline(&whale, &base, false)
+        );
+        // The same frame again, on every frame the window draws, asks for nothing.
+        assert_eq!(show(&mut pictures, key(1, 0), 1), baseline);
+        assert_eq!(show(&mut pictures, key(1, 0), 1), baseline);
+        assert_eq!(asked.get(), 1);
+        // Another frame of the pose is drawn, but the baseline is the one already worked out.
+        assert_eq!(show(&mut pictures, key(1, 1), 1), baseline);
+        assert_eq!(asked.get(), 2);
+        assert_eq!(pictures.baselines.len(), 1);
+        // Once the design changes, it is drawn and worked out afresh.
+        show(&mut pictures, key(2, 0), 2);
+        assert_eq!(asked.get(), 3);
+        assert_eq!(pictures.baselines.len(), 1);
+        assert!(pictures.frames.keys().all(|key| key.design == 2));
+    }
+
+    #[test]
+    fn small_pictures_no_longer_wanted_are_let_go() {
+        let ctx = egui::Context::default();
+        let base = crate::review::stand_in();
+        let blank = crate::presets::blank();
+        let mut pictures = Pictures::default();
+        let _ = pictures.thumb(&ctx, "kept", &blank, &base);
+        let _ = pictures.thumb(&ctx, "stale", &blank, &base);
+        pictures.keep_thumbs(|name| name == "kept");
+        assert_eq!(pictures.thumbs.keys().collect::<Vec<_>>(), ["kept"]);
+    }
 }

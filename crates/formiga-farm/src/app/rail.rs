@@ -7,9 +7,10 @@ use eframe::egui;
 use formiga_core::forms::Design;
 use formiga_farm_contract::FarmMode;
 
+#[derive(Clone)]
 enum Pick {
-    Preset { design: Design, id: String },
-    Mine { design: Design },
+    Preset { id: String },
+    Mine,
     Draft { id: String },
     Arrival,
 }
@@ -23,13 +24,25 @@ enum Act {
     CopyCode,
 }
 
-struct Entry {
-    key: String,
+#[derive(Clone)]
+pub(super) struct Entry {
+    /// Its design's revision, which names its small picture: a draft kept again, or the
+    /// creature's look kept by Desktop, is pictured afresh.
+    pub(super) key: String,
     name: String,
     note: Option<String>,
-    design: Design,
+    pub(super) design: Design,
     pick: Pick,
     delete: Option<Deletable>,
+}
+
+/// The entries on the shelf shown, made again only when something on the shelves changes.
+#[derive(Default)]
+pub(super) struct Listing {
+    /// The shelf, the count of changes to the owner's shelves, and the draft on the bench, the
+    /// entries were made for.
+    made_for: Option<(Shelf, u64, String)>,
+    pub(super) entries: Vec<Entry>,
 }
 
 impl FarmApp {
@@ -74,90 +87,8 @@ impl FarmApp {
             }
         });
         ui.separator();
-        let mut entries = Vec::new();
-        if let FarmMode::EditExisting { creature } = &self.snapshot.mode {
-            entries.push(Entry {
-                key: "arrival".into(),
-                name: format!("{} as they are", creature.name),
-                note: Some("Their look before Farm".into()),
-                design: self.editor.arrival.clone(),
-                pick: Pick::Arrival,
-                delete: None,
-            });
-        }
-        match self.shelf {
-            Shelf::Animals | Shelf::BodyForms => {
-                let want = if self.shelf == Shelf::Animals {
-                    |shelf: presets::Shelf| shelf == presets::Shelf::Animal
-                } else {
-                    |shelf: presets::Shelf| shelf != presets::Shelf::Animal
-                };
-                for preset in self.presets.iter().filter(|p| want(p.shelf)) {
-                    let note = match preset.shelf {
-                        presets::Shelf::Blank => Some("Nothing on it yet".to_owned()),
-                        presets::Shelf::BodyForm => Some(
-                            if preset.design.form.sculpt().is_some() {
-                                "Sculpted body"
-                            } else {
-                                "Companion body"
-                            }
-                            .to_owned(),
-                        ),
-                        presets::Shelf::Animal => None,
-                    };
-                    entries.push(Entry {
-                        key: format!("preset:{}", preset.id),
-                        name: preset.name.to_owned(),
-                        note,
-                        design: preset.design.clone(),
-                        pick: Pick::Preset {
-                            design: preset.design.clone(),
-                            id: preset.id.to_owned(),
-                        },
-                        delete: None,
-                    });
-                }
-            }
-            Shelf::Mine => {
-                for preset in &self.mine {
-                    entries.push(Entry {
-                        key: format!(
-                            "mine:{}:{}",
-                            preset.id,
-                            preset.saved_at_utc.unix_timestamp()
-                        ),
-                        name: preset.name.clone(),
-                        note: None,
-                        design: preset.design.clone(),
-                        pick: Pick::Mine {
-                            design: preset.design.clone(),
-                        },
-                        delete: Some(Deletable::Preset(preset.id.clone())),
-                    });
-                }
-            }
-            Shelf::Drafts => {
-                for draft in &self.drafts {
-                    let mut note = draft
-                        .for_name
-                        .as_ref()
-                        .map(|name| format!("A new look for {name}"));
-                    if draft.id == self.draft.id {
-                        note = Some("On the workbench".into());
-                    }
-                    entries.push(Entry {
-                        key: format!("draft:{}:{}", draft.id, draft.saved_at_utc.unix_timestamp()),
-                        name: draft.name.clone(),
-                        note,
-                        design: draft.design.clone(),
-                        pick: Pick::Draft {
-                            id: draft.id.clone(),
-                        },
-                        delete: Some(Deletable::Draft(draft.id.clone())),
-                    });
-                }
-            }
-        }
+        self.refresh_listing();
+        let entries = std::mem::take(&mut self.listing.entries);
         let empty = match self.shelf {
             Shelf::Mine => Some(
                 "Nothing here yet. \u{201c}Save as preset\u{201d} keeps a design here to start from again.",
@@ -278,16 +209,17 @@ impl FarmApp {
                     ui.add_space(2.0);
                 }
             });
+        let act = act.map(|(index, act)| (entries[index].clone(), act));
+        let picked = picked.map(|index| entries[index].clone());
+        self.listing.entries = entries;
         if let Some((what, name)) = delete {
             self.dialog = Some(Dialog::Delete { what, name });
-        } else if let Some((index, act)) = act {
-            let entry = entries.swap_remove(index);
+        } else if let Some((entry, act)) = act {
             self.act_on(ui.ctx(), entry, act);
-        } else if let Some(index) = picked {
-            let entry = entries.swap_remove(index);
+        } else if let Some(entry) = picked {
             match entry.pick {
-                Pick::Preset { design, id } => self.editor.start_from(design, Some(id)),
-                Pick::Mine { design, .. } => self.editor.start_from(design, None),
+                Pick::Preset { id } => self.editor.start_from(entry.design, Some(id)),
+                Pick::Mine => self.editor.start_from(entry.design, None),
                 Pick::Arrival => self.editor.restore_arrival(),
                 Pick::Draft { id } => {
                     if let Some(draft) = self.drafts.iter().find(|d| d.id == id).cloned() {
@@ -301,6 +233,122 @@ impl FarmApp {
                 }
             }
         }
+    }
+}
+
+impl FarmApp {
+    /// Make the shelf's entries again if anything on it has changed since they were made: the
+    /// shelf shown, a draft or preset kept, renamed or thrown away, the draft on the bench, or
+    /// the creature's look as it was before Farm. Small pictures of designs no longer on any
+    /// shelf are let go then too.
+    pub(super) fn refresh_listing(&mut self) {
+        let made_for = (self.shelf, self.shelves, self.draft.id.clone());
+        let fresh = self.listing.made_for.as_ref() == Some(&made_for)
+            && self
+                .listing
+                .entries
+                .iter()
+                .find(|entry| matches!(entry.pick, Pick::Arrival))
+                .is_none_or(|entry| entry.design == self.editor.arrival);
+        if fresh {
+            return;
+        }
+        self.listing.entries = self.shelf_entries();
+        self.listing.made_for = Some(made_for);
+        // Every design that could be pictured on any shelf, so that turning to another shelf
+        // and back draws nothing again.
+        let mut live: std::collections::HashSet<String> = self
+            .presets
+            .iter()
+            .map(|preset| &preset.design)
+            .chain(self.mine.iter().map(|preset| &preset.design))
+            .chain(self.drafts.iter().map(|draft| &draft.design))
+            .map(Design::revision)
+            .collect();
+        live.extend(self.listing.entries.iter().map(|entry| entry.key.clone()));
+        self.pictures.keep_thumbs(|key| live.contains(key));
+    }
+
+    /// The entries on the shelf shown, the creature as they are first when there is one.
+    fn shelf_entries(&self) -> Vec<Entry> {
+        let mut entries = Vec::new();
+        if let FarmMode::EditExisting { creature } = &self.snapshot.mode {
+            entries.push(Entry {
+                key: self.editor.arrival.revision(),
+                name: format!("{} as they are", creature.name),
+                note: Some("Their look before Farm".into()),
+                design: self.editor.arrival.clone(),
+                pick: Pick::Arrival,
+                delete: None,
+            });
+        }
+        match self.shelf {
+            Shelf::Animals | Shelf::BodyForms => {
+                let want = if self.shelf == Shelf::Animals {
+                    |shelf: presets::Shelf| shelf == presets::Shelf::Animal
+                } else {
+                    |shelf: presets::Shelf| shelf != presets::Shelf::Animal
+                };
+                for preset in self.presets.iter().filter(|p| want(p.shelf)) {
+                    let note = match preset.shelf {
+                        presets::Shelf::Blank => Some("Nothing on it yet".to_owned()),
+                        presets::Shelf::BodyForm => Some(
+                            if preset.design.form.sculpt().is_some() {
+                                "Sculpted body"
+                            } else {
+                                "Companion body"
+                            }
+                            .to_owned(),
+                        ),
+                        presets::Shelf::Animal => None,
+                    };
+                    entries.push(Entry {
+                        key: preset.design.revision(),
+                        name: preset.name.to_owned(),
+                        note,
+                        design: preset.design.clone(),
+                        pick: Pick::Preset {
+                            id: preset.id.to_owned(),
+                        },
+                        delete: None,
+                    });
+                }
+            }
+            Shelf::Mine => {
+                for preset in &self.mine {
+                    entries.push(Entry {
+                        key: preset.design.revision(),
+                        name: preset.name.clone(),
+                        note: None,
+                        design: preset.design.clone(),
+                        pick: Pick::Mine,
+                        delete: Some(Deletable::Preset(preset.id.clone())),
+                    });
+                }
+            }
+            Shelf::Drafts => {
+                for draft in &self.drafts {
+                    let mut note = draft
+                        .for_name
+                        .as_ref()
+                        .map(|name| format!("A new look for {name}"));
+                    if draft.id == self.draft.id {
+                        note = Some("On the workbench".into());
+                    }
+                    entries.push(Entry {
+                        key: draft.design.revision(),
+                        name: draft.name.clone(),
+                        note,
+                        design: draft.design.clone(),
+                        pick: Pick::Draft {
+                            id: draft.id.clone(),
+                        },
+                        delete: Some(Deletable::Draft(draft.id.clone())),
+                    });
+                }
+            }
+        }
+        entries
     }
 }
 
@@ -322,9 +370,9 @@ impl FarmApp {
                         draft.preset.clone(),
                         draft.for_name.clone(),
                     );
-                    match self.store.save_draft(&mut copy) {
+                    match self.store.save_draft(&mut copy, &mut self.drafts) {
                         Ok(let_go) => {
-                            self.drafts = self.store.drafts();
+                            self.shelves += 1;
                             if !self.say_let_go(&let_go) {
                                 self.say(
                                     format!("Kept a copy as \u{201c}{}\u{201d}.", copy.name),
@@ -343,7 +391,7 @@ impl FarmApp {
                 );
                 match self.store.save_preset(&copy) {
                     Ok(()) => {
-                        self.mine = self.store.presets();
+                        self.reload_presets();
                         self.say(
                             format!("Kept a copy as \u{201c}{}\u{201d}.", copy.name),
                             false,
@@ -356,7 +404,7 @@ impl FarmApp {
                 let preset = crate::store::PersonalPreset::new(&entry.name, entry.design);
                 match self.store.save_preset(&preset) {
                     Ok(()) => {
-                        self.mine = self.store.presets();
+                        self.reload_presets();
                         self.say(
                             format!("Kept \u{201c}{}\u{201d} in My presets.", preset.name),
                             false,

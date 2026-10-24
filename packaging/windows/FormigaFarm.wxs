@@ -38,6 +38,9 @@
               Type="integer"
               Value="$(FarmFormatVersion)" />
         </Component>
+        <Component Id="FarmLicense" Guid="21380FFA-B2E4-4F3B-A2A2-666D3BD0E4E7">
+          <File Id="FarmLicenseFile" Source="$(FarmLicense)" Name="License.txt" KeyPath="yes" />
+        </Component>
       </Directory>
     </StandardDirectory>
 
@@ -64,6 +67,7 @@
 
     <Feature Id="MainFeature" Title="Formiga Farm" Level="1">
       <ComponentRef Id="FarmApplication" />
+      <ComponentRef Id="FarmLicense" />
       <ComponentRef Id="FarmShortcut" />
     </Feature>
   </Package>
