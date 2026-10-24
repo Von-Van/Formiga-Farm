@@ -469,6 +469,28 @@ impl WindowPlace {
     }
 }
 
+/// Where to move a window whose frame is at `window` (left, top, width and height, in the
+/// screens' own pixels) so that the strip along its top, the part it is dragged by, is on one of
+/// `screens`, the main screen first; `None` when it can be reached where it is. A window last
+/// closed on a screen since unplugged would otherwise open where nobody can see it or move it.
+pub fn onto_a_screen(window: [i32; 4], screens: &[[i32; 4]]) -> Option<(i32, i32)> {
+    let [x, y, width, height] = window;
+    let strip = height.min(32);
+    let reachable = screens.iter().any(|&[left, top, across, down]| {
+        let wide = (x + width).min(left + across) - x.max(left);
+        let tall = (y + strip).min(top + down) - y.max(top);
+        wide >= width.min(100) && tall >= strip.min(16)
+    });
+    if reachable {
+        return None;
+    }
+    let &[left, top, across, down] = screens.first()?;
+    Some((
+        x.clamp(left, left + (across - width).max(0)),
+        y.clamp(top, top + (down - height).max(0)),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -616,6 +638,36 @@ mod tests {
         assert_eq!(store.presets()[0].design, fox);
         assert!(store.rename_preset("0000000000000000", "Nobody").is_err());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_window_left_on_a_screen_since_unplugged_is_brought_back_onto_one() {
+        let main = [0, 0, 1920, 1080];
+        let left = [-2560, -200, 2560, 1440];
+        // On the main screen, or on the second screen to its left: left where it is.
+        assert_eq!(onto_a_screen([100, 100, 1240, 800], &[main, left]), None);
+        assert_eq!(onto_a_screen([-2000, 0, 1240, 800], &[main, left]), None);
+        // Half off the right edge, with its title bar still in reach: left where it is.
+        assert_eq!(onto_a_screen([1500, 300, 1240, 800], &[main]), None);
+        // On the screen to the left, which is gone: brought back onto the main screen, as near
+        // where it was as fits.
+        assert_eq!(onto_a_screen([-2000, 0, 1240, 800], &[main]), Some((0, 0)));
+        assert_eq!(
+            onto_a_screen([2500, 400, 1240, 800], &[main]),
+            Some((680, 280))
+        );
+        // Its title bar above the top of every screen.
+        assert_eq!(
+            onto_a_screen([200, -600, 1240, 800], &[main]),
+            Some((200, 0))
+        );
+        // Larger than the screen: its top left corner on the screen's.
+        assert_eq!(
+            onto_a_screen([3000, 3000, 2400, 1600], &[main]),
+            Some((0, 0))
+        );
+        // No screens known: left to the system.
+        assert_eq!(onto_a_screen([-5000, -5000, 1240, 800], &[]), None);
     }
 
     #[test]

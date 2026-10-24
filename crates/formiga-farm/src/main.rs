@@ -370,6 +370,29 @@ fn main() -> Result<()> {
         "Formiga Farm",
         options,
         Box::new(move |cc| {
+            // Opened where it was last closed, which may be on a screen since unplugged:
+            // Windows would leave it there, out of sight.
+            if place.is_some()
+                && let Some(window) = cc.winit_window()
+                && let Ok(at) = window.outer_position()
+            {
+                let size = window.outer_size();
+                let screens: Vec<[i32; 4]> = window
+                    .primary_monitor()
+                    .into_iter()
+                    .chain(window.available_monitors())
+                    .map(|screen| {
+                        let (corner, size) = (screen.position(), screen.size());
+                        [corner.x, corner.y, size.width as i32, size.height as i32]
+                    })
+                    .collect();
+                let frame = [at.x, at.y, size.width as i32, size.height as i32];
+                if let Some((x, y)) = store::onto_a_screen(frame, &screens) {
+                    let mut to = at;
+                    (to.x, to.y) = (x, y);
+                    window.set_outer_position(to);
+                }
+            }
             let mut app = FarmApp::new(&cc.egui_ctx, opening).map_err(|error| error.to_string())?;
             app.show(args.layer, args.intent, args.view);
             if args.welcome {
