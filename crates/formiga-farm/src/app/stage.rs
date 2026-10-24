@@ -8,7 +8,7 @@ use crate::notices::Level;
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke, vec2};
 use formiga_art::FRAME_SIZE;
 use formiga_art::forms::{DesignRenderer, Intent};
-use formiga_core::forms::Design;
+use std::borrow::Cow;
 
 const FRAME: f32 = FRAME_SIZE as f32;
 const UV: Rect = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
@@ -65,11 +65,6 @@ impl FarmApp {
         hd: bool,
         travels: bool,
     ) -> Rect {
-        let design = if travels {
-            crate::drawing::as_it_travels(self.shown(), &self.base)
-        } else {
-            self.shown().clone()
-        };
         let key = FrameKey {
             design: if self.before {
                 u64::MAX
@@ -84,12 +79,12 @@ impl FarmApp {
             travels,
             dressed: self.dressed && self.dress.is_some(),
         };
-        self.paint_figure(ui, &design, key, x, floor, scale)
+        self.paint_figure(ui, key, x, floor, scale)
     }
 
     /// The design shown beside the workbench's to compare, drawn as the workbench's is on the
     /// stage, at `scale`, standing on `floor` and centred on `x`.
-    fn compared_figure(&mut self, ui: &egui::Ui, design: &Design, x: f32, floor: f32, scale: f32) {
+    fn compared_figure(&mut self, ui: &egui::Ui, x: f32, floor: f32, scale: f32) {
         let key = FrameKey {
             design: super::pictures::COMPARED,
             intent: self.intent,
@@ -100,15 +95,15 @@ impl FarmApp {
             travels: false,
             dressed: self.dressed && self.dress.is_some(),
         };
-        self.paint_figure(ui, design, key, x, floor, scale);
+        self.paint_figure(ui, key, x, floor, scale);
     }
 
-    /// Draw `design`'s frame named by `key`, `scale` physical pixels to an art pixel, standing
-    /// with its ground row on `floor`, centred on `x`. Returns where the frame went.
+    /// Draw the frame named by `key`, of the design compared if its key says so and otherwise
+    /// the one shown, `scale` physical pixels to an art pixel, standing with its ground row on
+    /// `floor`, centred on `x`. Returns where the frame went.
     fn paint_figure(
         &mut self,
         ui: &egui::Ui,
-        design: &Design,
         key: FrameKey,
         x: f32,
         floor: f32,
@@ -116,15 +111,42 @@ impl FarmApp {
     ) -> Rect {
         let ctx = ui.ctx().clone();
         let points = scale / ctx.pixels_per_point();
-        let baseline = DesignRenderer::resting_baseline(design, &self.base, self.reduce_motion());
-        let texture = self.pictures.frame(
+        let reduce_motion = self.reduce_motion();
+        let Self {
+            pictures,
+            editor,
+            base,
+            before,
+            compare,
+            dress,
+            ..
+        } = self;
+        // Worked out only when the frame or the baseline is not already kept.
+        let design = || {
+            if key.design == super::pictures::COMPARED
+                && let Some((_, compared)) = compare.as_ref()
+            {
+                return Cow::Borrowed(compared);
+            }
+            let shown = if *before {
+                &editor.arrival
+            } else {
+                editor.design()
+            };
+            if key.travels {
+                Cow::Owned(crate::drawing::as_it_travels(shown, base))
+            } else {
+                Cow::Borrowed(shown)
+            }
+        };
+        let (texture, baseline) = pictures.frame(
             &ctx,
-            design,
-            &self.base,
+            base,
             key,
-            self.editor.changes,
-            self.reduce_motion(),
-            self.dress,
+            editor.changes,
+            reduce_motion,
+            *dress,
+            design,
         );
         let ground_row = FRAME - 1.0 - baseline as f32;
         let top_left = Pos2::new(
@@ -155,12 +177,12 @@ impl FarmApp {
                     Stroke::new(3.0, ink.stage_edge),
                     egui::StrokeKind::Inside,
                 );
-                let compared = self.compare.clone();
-                let room_for = if compared.is_some() { 0.5 } else { 0.78 };
+                let comparing = self.compare.is_some();
+                let room_for = if comparing { 0.5 } else { 0.78 };
                 let scale = ((chamber.height() * ppp * room_for) / FRAME)
                     .floor()
                     .clamp(2.0, 14.0);
-                let x = if compared.is_some() {
+                let x = if comparing {
                     chamber.center().x + size * 0.22
                 } else {
                     chamber.center().x
@@ -175,10 +197,11 @@ impl FarmApp {
                     Stroke::new(2.0, ink.stage_edge),
                 );
                 let rect = self.figure(ui, x, floor, scale, false, !self.grid, false);
-                if let Some((name, design)) = &compared {
+                if comparing {
                     let other = chamber.center().x - size * 0.22;
-                    self.compared_figure(ui, design, other, floor, scale);
-                    for (at, label) in [(other, name.as_str()), (x, "Workbench")] {
+                    self.compared_figure(ui, other, floor, scale);
+                    let name = self.compare.as_ref().map_or("", |(name, _)| name.as_str());
+                    for (at, label) in [(other, name), (x, "Workbench")] {
                         ui.painter().text(
                             Pos2::new(at, floor + 10.0),
                             egui::Align2::CENTER_TOP,
