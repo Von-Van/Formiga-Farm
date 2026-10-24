@@ -32,6 +32,9 @@ const TOAST_SECS: f64 = 6.0;
 /// at the next one Farm hands it.
 const ANSWER_SECS: f64 = 4.0;
 
+/// How often Farm looks for Desktop's answer, or for the session's end, in seconds.
+const LISTEN_EVERY: f64 = 0.25;
+
 /// Below this width the shelves and the inspector become drawers, one open at a time.
 const NARROW: f32 = 980.0;
 
@@ -175,6 +178,8 @@ pub struct FarmApp {
     /// What "Roll everything" leaves as it is.
     locks: crate::editor::Locks,
     pending: Option<(u32, f64)>,
+    /// When Farm last looked for anything from Desktop.
+    listened_at: f64,
     expected_revision: Option<String>,
     dialog: Option<Dialog>,
     reading: Option<reading::Reading>,
@@ -288,6 +293,7 @@ impl FarmApp {
             compare: None,
             locks: crate::editor::Locks::default(),
             pending: None,
+            listened_at: f64::NEG_INFINITY,
             expected_revision,
             dialog: None,
             reading: None,
@@ -496,8 +502,20 @@ impl FarmApp {
         let lineage = Lineage::new(self.editor.preset.as_deref(), Some(&self.draft.name));
         let design = self.editor.design().clone();
         match self.host.propose(&self.snapshot, kind, &design, lineage) {
-            Ok(serial) => self.pending = Some((serial, self.clock)),
+            Ok(serial) => {
+                self.pending = Some((serial, self.clock));
+                // Look for the answer at once: a rehearsal has it already.
+                self.listened_at = f64::NEG_INFINITY;
+            }
             Err(error) => self.say(format!("{error:#}"), true),
+        }
+    }
+
+    /// Look for anything from Desktop a few times a second, rather than on every frame drawn.
+    fn listen_when_due(&mut self, ctx: &egui::Context) {
+        if self.clock - self.listened_at >= LISTEN_EVERY {
+            self.listened_at = self.clock;
+            self.listen(ctx);
         }
     }
 
@@ -1161,6 +1179,20 @@ impl FarmApp {
     }
 }
 
+/// How long the window waits to be drawn again when nothing else asks: smoothly while the owner
+/// is working in it, at the pace reduced motion keeps behind other windows, and once a second
+/// when minimised. Never slower than that, so a word from Desktop is heard soon enough.
+fn repaint_after(focused: bool, minimized: bool, reduce_motion: bool) -> std::time::Duration {
+    let fps = if minimized {
+        1
+    } else if !focused || reduce_motion {
+        4
+    } else {
+        30
+    };
+    std::time::Duration::from_millis(1000 / fps)
+}
+
 impl eframe::App for FarmApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -1184,7 +1216,7 @@ impl eframe::App for FarmApp {
         if close {
             self.leave();
         }
-        self.listen(&ctx);
+        self.listen_when_due(&ctx);
         self.dropped_pictures(&ctx);
         self.heard_reading(&ctx);
         self.keys(&ctx);
@@ -1232,8 +1264,14 @@ impl eframe::App for FarmApp {
         if self.apply_at.is_none() && self.pending.is_none() {
             self.take_snap(&ctx);
         }
-        let fps = if self.reduce_motion() { 4 } else { 30 };
-        ctx.request_repaint_after(std::time::Duration::from_millis(1000 / fps));
+        let (focused, minimized) = ctx.input(|input| {
+            let viewport = input.viewport();
+            (
+                viewport.focused.unwrap_or(true),
+                viewport.minimized.unwrap_or(false),
+            )
+        });
+        ctx.request_repaint_after(repaint_after(focused, minimized, self.reduce_motion()));
     }
 
     /// A window opened only to have its picture taken answers to nobody.
@@ -1502,6 +1540,39 @@ mod tests {
         assert!(app.pending.is_none());
         assert!(app.toast.as_ref().is_some_and(|toast| !toast.trouble));
         let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    #[test]
+    fn desktop_is_listened_to_a_few_times_a_second_rather_than_every_frame() {
+        let ctx = egui::Context::default();
+        let (mut app, dir, seal) = visited();
+        app.clock = 10.0;
+        app.editor.randomize(Layer::Finish, 9);
+        app.apply();
+        // Straight after applying, Farm looks at once.
+        app.listen_when_due(&ctx);
+        assert_eq!(app.listened_at, 10.0);
+        answer(&dir, &seal, 1, Verdict::Unavailable);
+        app.clock = 10.1;
+        app.listen_when_due(&ctx);
+        assert!(app.pending.is_some(), "not looked for again so soon");
+        app.clock = 10.0 + LISTEN_EVERY;
+        app.listen_when_due(&ctx);
+        assert!(app.pending.is_none(), "heard on the next look");
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    #[test]
+    fn the_window_is_drawn_smoothly_only_while_it_is_being_worked_in() {
+        let ms = |focused, minimized, reduce_motion| {
+            repaint_after(focused, minimized, reduce_motion).as_millis()
+        };
+        assert_eq!(ms(true, false, false), 33);
+        assert_eq!(ms(true, false, true), 250);
+        assert_eq!(ms(false, false, false), 250);
+        assert_eq!(ms(false, true, false), 1000);
+        // Never so slow that a word from Desktop waits more than a second to be heard.
+        assert!(ms(false, true, true) as f64 / 1000.0 >= LISTEN_EVERY);
     }
 
     #[test]
