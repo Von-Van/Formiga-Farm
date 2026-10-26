@@ -27,6 +27,14 @@ use std::path::PathBuf;
 /// How long a short message stays up, in seconds.
 const TOAST_SECS: f64 = 6.0;
 
+/// How long Farm waits for Desktop to answer a design before the owner may apply again, in
+/// seconds. Desktop leaves a design unanswered while it cannot write the colony, and looks again
+/// at the next one Farm hands it.
+const ANSWER_SECS: f64 = 4.0;
+
+/// How often Farm looks for Desktop's answer, or for the session's end, in seconds.
+const LISTEN_EVERY: f64 = 0.25;
+
 /// Below this width the shelves and the inspector become drawers, one open at a time.
 const NARROW: f32 = 980.0;
 
@@ -170,6 +178,8 @@ pub struct FarmApp {
     /// What "Roll everything" leaves as it is.
     locks: crate::editor::Locks,
     pending: Option<(u32, f64)>,
+    /// When Farm last looked for anything from Desktop.
+    listened_at: f64,
     expected_revision: Option<String>,
     dialog: Option<Dialog>,
     reading: Option<reading::Reading>,
@@ -179,6 +189,10 @@ pub struct FarmApp {
     presets: Vec<Preset>,
     drafts: Vec<Draft>,
     mine: Vec<PersonalPreset>,
+    /// Counts the changes to the drafts and personal presets, so the shelf shown is made again
+    /// only when they change.
+    shelves: u64,
+    listing: rail::Listing,
     palettes: Vec<crate::store::Palette>,
     notices: (u64, Vec<Notice>),
     clock: f64,
@@ -279,6 +293,7 @@ impl FarmApp {
             compare: None,
             locks: crate::editor::Locks::default(),
             pending: None,
+            listened_at: f64::NEG_INFINITY,
             expected_revision,
             dialog: None,
             reading: None,
@@ -288,6 +303,8 @@ impl FarmApp {
             presets: crate::presets::all(),
             drafts,
             mine,
+            shelves: 0,
+            listing: rail::Listing::default(),
             palettes,
             notices: (u64::MAX, Vec::new()),
             clock: 0.0,
@@ -397,10 +414,10 @@ impl FarmApp {
         }
         self.draft.design = self.editor.design().clone();
         self.draft.preset = self.editor.preset.clone();
-        match self.store.save_draft(&mut self.draft) {
+        match self.store.save_draft(&mut self.draft, &mut self.drafts) {
             Ok(let_go) => {
                 self.kept_changes = self.editor.changes;
-                self.drafts = self.store.drafts();
+                self.shelves += 1;
                 self.say_let_go(&let_go)
             }
             Err(error) => {
@@ -408,6 +425,18 @@ impl FarmApp {
                 true
             }
         }
+    }
+
+    /// Read the owner's drafts again, after one was renamed or thrown away.
+    fn reload_drafts(&mut self) {
+        self.drafts = self.store.drafts();
+        self.shelves += 1;
+    }
+
+    /// Read the owner's own presets again, after one was kept, renamed or thrown away.
+    fn reload_presets(&mut self) {
+        self.mine = self.store.presets();
+        self.shelves += 1;
     }
 
     /// Name the draft a full shelf let go to keep another, if it let one go. Returns whether it
@@ -447,8 +476,16 @@ impl FarmApp {
         }
     }
 
+    /// Whether a design was just handed to Desktop and is still being waited on. Once Desktop
+    /// has been given a while to answer, the owner may apply again: Desktop leaves a design
+    /// unanswered while it cannot write the colony, and weighs the next one Farm hands it.
+    fn waiting(&self) -> bool {
+        self.pending
+            .is_some_and(|(_, since)| self.clock - since < ANSWER_SECS)
+    }
+
     fn apply(&mut self) {
-        if self.pending.is_some() || notices::blocked(self.notices()) {
+        if self.waiting() || notices::blocked(self.notices()) {
             return;
         }
         let kind = match &self.snapshot.mode {
@@ -465,8 +502,20 @@ impl FarmApp {
         let lineage = Lineage::new(self.editor.preset.as_deref(), Some(&self.draft.name));
         let design = self.editor.design().clone();
         match self.host.propose(&self.snapshot, kind, &design, lineage) {
-            Ok(serial) => self.pending = Some((serial, self.clock)),
+            Ok(serial) => {
+                self.pending = Some((serial, self.clock));
+                // Look for the answer at once: a rehearsal has it already.
+                self.listened_at = f64::NEG_INFINITY;
+            }
             Err(error) => self.say(format!("{error:#}"), true),
+        }
+    }
+
+    /// Look for anything from Desktop a few times a second, rather than on every frame drawn.
+    fn listen_when_due(&mut self, ctx: &egui::Context) {
+        if self.clock - self.listened_at >= LISTEN_EVERY {
+            self.listened_at = self.clock;
+            self.listen(ctx);
         }
     }
 
@@ -739,7 +788,7 @@ impl FarmApp {
                     FarmMode::EditExisting { creature } => format!("Apply to {}", creature.name),
                     FarmMode::Create { .. } => "Add to colony".to_owned(),
                 };
-                let waiting = self.pending.is_some();
+                let waiting = self.waiting();
                 let apply = egui::Button::new(egui::RichText::new(label).strong())
                     .fill(if blocked { ink.card } else { ink.chosen.gamma_multiply(0.35) });
                 let response = ui.add_enabled(!blocked && !waiting, apply);
@@ -854,7 +903,7 @@ impl FarmApp {
         let preset = PersonalPreset::new(name, self.editor.design().clone());
         match self.store.save_preset(&preset) {
             Ok(()) => {
-                self.mine = self.store.presets();
+                self.reload_presets();
                 self.say(
                     format!("Kept \u{201c}{}\u{201d} in My presets.", preset.name),
                     false,
@@ -984,7 +1033,7 @@ impl FarmApp {
                             match what {
                                 Deletable::Draft(id) => {
                                     self.store.delete_draft(id);
-                                    self.drafts = self.store.drafts();
+                                    self.reload_drafts();
                                     if *id == self.draft.id {
                                         // The design on the bench is kept as a fresh draft.
                                         self.draft.id = crate::store::new_id();
@@ -993,7 +1042,7 @@ impl FarmApp {
                                 }
                                 Deletable::Preset(id) => {
                                     self.store.delete_preset(id);
-                                    self.mine = self.store.presets();
+                                    self.reload_presets();
                                 }
                             }
                             keep_open = false;
@@ -1021,12 +1070,12 @@ impl FarmApp {
                                         if draft.id == self.draft.id {
                                             self.draft.name = draft.name;
                                         }
-                                        self.drafts = self.store.drafts();
+                                        self.reload_drafts();
                                     })
                                 }
                                 Deletable::Preset(id) => {
                                     self.store.rename_preset(id, &text).map(|_| {
-                                        self.mine = self.store.presets();
+                                        self.reload_presets();
                                     })
                                 }
                             };
@@ -1095,7 +1144,7 @@ impl FarmApp {
         let ink = style::ink(ui.visuals().dark_mode);
         let (text, color) = match (&self.toast, waiting) {
             (_, Some(waited)) if waited > 4.0 && !self.host.is_rehearsal() => (
-                "Desktop has the design. If it is busy, it will look at it when Farm closes."
+                "Desktop has the design. If it is busy, it will look at it when you apply again or when Farm closes."
                     .to_owned(),
                 ink.faint,
             ),
@@ -1130,6 +1179,20 @@ impl FarmApp {
     }
 }
 
+/// How long the window waits to be drawn again when nothing else asks: smoothly while the owner
+/// is working in it, at the pace reduced motion keeps behind other windows, and once a second
+/// when minimised. Never slower than that, so a word from Desktop is heard soon enough.
+fn repaint_after(focused: bool, minimized: bool, reduce_motion: bool) -> std::time::Duration {
+    let fps = if minimized {
+        1
+    } else if !focused || reduce_motion {
+        4
+    } else {
+        30
+    };
+    std::time::Duration::from_millis(1000 / fps)
+}
+
 impl eframe::App for FarmApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -1153,7 +1216,7 @@ impl eframe::App for FarmApp {
         if close {
             self.leave();
         }
-        self.listen(&ctx);
+        self.listen_when_due(&ctx);
         self.dropped_pictures(&ctx);
         self.heard_reading(&ctx);
         self.keys(&ctx);
@@ -1201,8 +1264,14 @@ impl eframe::App for FarmApp {
         if self.apply_at.is_none() && self.pending.is_none() {
             self.take_snap(&ctx);
         }
-        let fps = if self.reduce_motion() { 4 } else { 30 };
-        ctx.request_repaint_after(std::time::Duration::from_millis(1000 / fps));
+        let (focused, minimized) = ctx.input(|input| {
+            let viewport = input.viewport();
+            (
+                viewport.focused.unwrap_or(true),
+                viewport.minimized.unwrap_or(false),
+            )
+        });
+        ctx.request_repaint_after(repaint_after(focused, minimized, self.reduce_motion()));
     }
 
     /// A window opened only to have its picture taken answers to nobody.
@@ -1317,10 +1386,11 @@ mod tests {
         let dir =
             std::env::temp_dir().join(format!("formiga-farm-app-full-{}", crate::store::new_id()));
         let store = Store::new(Some(dir.clone()));
+        let mut shelf = Vec::new();
         for index in 0..crate::store::MAX_DRAFTS {
             let mut old = Draft::new("Old", crate::presets::blank(), None, None);
             old.id = format!("1{index:015x}");
-            store.save_draft(&mut old).unwrap();
+            store.save_draft(&mut old, &mut shelf).unwrap();
         }
         let mut app = app(None);
         app.store = store;
@@ -1335,6 +1405,174 @@ mod tests {
             "the explicit save still names the draft let go"
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_creature_as_they_are_is_pictured_afresh_once_desktop_keeps_a_new_look() {
+        let ctx = egui::Context::default();
+        let mut app = app(Some(0));
+        app.refresh_listing();
+        let before = app.listing.entries[0].key.clone();
+        for entry in &app.listing.entries {
+            let _ = app
+                .pictures
+                .thumb(&ctx, &entry.key, &entry.design, &app.base);
+        }
+        let preset = app.listing.entries[1].key.clone();
+        let orca = crate::presets::find("animal.orca").unwrap().design;
+        app.editor
+            .start_from(orca.clone(), Some("animal.orca".into()));
+        app.apply();
+        app.listen(&ctx);
+        app.refresh_listing();
+        assert_eq!(app.listing.entries[0].key, orca.revision());
+        assert!(
+            !app.pictures.has_thumb(&before),
+            "the old look's picture is let go"
+        );
+        // A preset's picture is kept, even on another shelf, to show again.
+        app.shelf = Shelf::Animals;
+        app.refresh_listing();
+        assert!(app.pictures.has_thumb(&preset));
+    }
+
+    #[test]
+    fn a_draft_kept_again_is_pictured_afresh_and_its_old_picture_let_go() {
+        let ctx = egui::Context::default();
+        let dir = std::env::temp_dir().join(format!(
+            "formiga-farm-app-thumbs-{}",
+            crate::store::new_id()
+        ));
+        let mut app = app(None);
+        app.store = Store::new(Some(dir.clone()));
+        app.shelf = Shelf::Drafts;
+        app.editor.randomize(Layer::Finish, 9);
+        app.keep_draft_now();
+        app.refresh_listing();
+        let first = app.listing.entries[0].key.clone();
+        let _ = app
+            .pictures
+            .thumb(&ctx, &first, &app.listing.entries[0].design, &app.base);
+        // Kept again within the same second, with a different look.
+        app.editor.randomize(Layer::Finish, 10);
+        app.keep_draft_now();
+        app.refresh_listing();
+        assert_eq!(app.listing.entries.len(), 1);
+        let second = app.listing.entries[0].key.clone();
+        assert_ne!(first, second);
+        assert_eq!(second, app.editor.design().revision());
+        assert!(!app.pictures.has_thumb(&first));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A session opened by Desktop on the sample colony's first creature, in a scratch folder,
+    /// with nobody answering in Desktop's place: the folder and the session's seal come too.
+    fn visited() -> (FarmApp, PathBuf, formiga_farm_contract::SessionSeal) {
+        use formiga_farm_contract::{SNAPSHOT_FILE, encode, write_document};
+        let snapshot = formiga_farm_contract::sample::edit_snapshot(0);
+        let root =
+            std::env::temp_dir().join(format!("formiga-farm-app-visit-{}", crate::store::new_id()));
+        let dir = root.join(snapshot.session_id.as_str());
+        std::fs::create_dir_all(&dir).unwrap();
+        write_document(&dir.join(SNAPSHOT_FILE), &snapshot).unwrap();
+        let seal = formiga_farm_contract::SessionSeal::of(&snapshot, &encode(&snapshot).unwrap());
+        let (visit, snapshot) = crate::session::arrive(&dir, false).unwrap();
+        let app = FarmApp::new(
+            &egui::Context::default(),
+            Opening {
+                snapshot,
+                host: Host::Desktop(visit),
+                store: Store::new(None),
+                open: None,
+                start: None,
+            },
+        )
+        .unwrap();
+        (app, dir, seal)
+    }
+
+    /// Desktop's verdict on proposal `serial`, written as Desktop writes it.
+    fn answer(
+        dir: &std::path::Path,
+        seal: &formiga_farm_contract::SessionSeal,
+        serial: u32,
+        verdict: Verdict,
+    ) {
+        let verdict =
+            formiga_farm_contract::FarmVerdict::new(seal, serial, crate::session::now(), verdict);
+        formiga_farm_contract::write_document(
+            &dir.join(formiga_farm_contract::VERDICT_FILE),
+            &verdict,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_design_desktop_leaves_unanswered_can_be_applied_again_after_a_while() {
+        let (mut app, dir, seal) = visited();
+        app.editor.randomize(Layer::Finish, 9);
+        app.apply();
+        assert_eq!(app.pending.map(|(serial, _)| serial), Some(1));
+        // Straight away, Desktop is still being waited on.
+        app.apply();
+        assert_eq!(app.pending.map(|(serial, _)| serial), Some(1));
+        app.listen(&egui::Context::default());
+        assert!(app.pending.is_some(), "nothing heard yet");
+        // Desktop could not write the colony and left it unanswered. A while later the owner
+        // applies again, as the next serial, which Desktop takes as news.
+        app.clock += ANSWER_SECS;
+        assert!(!app.waiting());
+        app.apply();
+        assert_eq!(app.pending.map(|(serial, _)| serial), Some(2));
+        let (proposal, _) = formiga_farm_contract::read_document::<
+            formiga_farm_contract::FarmProposal,
+        >(&dir.join(formiga_farm_contract::PROPOSAL_FILE))
+        .unwrap();
+        assert_eq!(proposal.serial, 2);
+        // A late answer to the first says nothing about the second.
+        answer(&dir, &seal, 1, Verdict::Unavailable);
+        app.listen(&egui::Context::default());
+        assert!(app.pending.is_some());
+        // Desktop keeps the second, and Farm hears so.
+        let revision = app.editor.design().revision();
+        answer(&dir, &seal, 2, Verdict::Kept { revision });
+        app.listen(&egui::Context::default());
+        assert!(app.pending.is_none());
+        assert!(app.toast.as_ref().is_some_and(|toast| !toast.trouble));
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    #[test]
+    fn desktop_is_listened_to_a_few_times_a_second_rather_than_every_frame() {
+        let ctx = egui::Context::default();
+        let (mut app, dir, seal) = visited();
+        app.clock = 10.0;
+        app.editor.randomize(Layer::Finish, 9);
+        app.apply();
+        // Straight after applying, Farm looks at once.
+        app.listen_when_due(&ctx);
+        assert_eq!(app.listened_at, 10.0);
+        answer(&dir, &seal, 1, Verdict::Unavailable);
+        app.clock = 10.1;
+        app.listen_when_due(&ctx);
+        assert!(app.pending.is_some(), "not looked for again so soon");
+        app.clock = 10.0 + LISTEN_EVERY;
+        app.listen_when_due(&ctx);
+        assert!(app.pending.is_none(), "heard on the next look");
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    #[test]
+    fn the_window_is_drawn_smoothly_only_while_it_is_being_worked_in() {
+        let ms = |focused, minimized, reduce_motion| {
+            repaint_after(focused, minimized, reduce_motion).as_millis()
+        };
+        assert_eq!(ms(true, false, false), 33);
+        assert_eq!(ms(true, false, true), 250);
+        assert_eq!(ms(false, false, false), 250);
+        assert_eq!(ms(false, true, false), 1000);
+        // Never so slow that a word from Desktop waits more than a second to be heard.
+        assert!(ms(false, true, true) as f64 / 1000.0 >= LISTEN_EVERY);
     }
 
     #[test]

@@ -16,12 +16,15 @@ dmg_staging="$dist_dir/Formiga-Farm-dmg"
 
 cd "$repo_dir"
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
-cargo build --release -p formiga-farm --target aarch64-apple-darwin
-cargo build --release -p formiga-farm --target x86_64-apple-darwin
+cargo build --release --locked -p formiga-farm --target aarch64-apple-darwin
+cargo build --release --locked -p formiga-farm --target x86_64-apple-darwin
 
 rm -rf "$app_dir" "$dmg_staging"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
 cp "$repo_dir/packaging/macos/Info.plist" "$app_dir/Contents/Info.plist"
+# The MIT licence travels with every copy: inside the app, so the ZIP carries it, and beside it on
+# the disk image.
+cp "$repo_dir/LICENSE" "$app_dir/Contents/Resources/LICENSE"
 lipo -create \
     "$repo_dir/target/aarch64-apple-darwin/release/formiga-farm" \
     "$repo_dir/target/x86_64-apple-darwin/release/formiga-farm" \
@@ -64,6 +67,7 @@ mkdir -p "$dmg_staging"
 ditto "$app_dir" "$dmg_staging/Formiga Farm.app"
 ln -s /Applications "$dmg_staging/Applications"
 cp "$repo_dir/packaging/macos/README.txt" "$dmg_staging/Read Me.txt"
+cp "$repo_dir/LICENSE" "$dmg_staging/License.txt"
 hdiutil create -volname "Formiga Farm" -srcfolder "$dmg_staging" -ov -format UDZO "$disk_image"
 
 if [[ -n "${FORMIGA_NOTARY_PROFILE:-}" ]]; then

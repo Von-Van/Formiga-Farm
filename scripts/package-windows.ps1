@@ -14,6 +14,7 @@ $Version = $Version.TrimStart("v")
 $Portable = Join-Path $DistDir "Formiga-Farm-$Version-windows-x64.zip"
 $Installer = Join-Path $DistDir "Formiga-Farm-$Version-windows-x64.msi"
 $PortableDir = Join-Path $DistDir "Formiga-Farm-portable"
+$License = Join-Path $RepoDir "LICENSE"
 
 function Write-Checksum([string]$Path) {
     $Hash = (Get-FileHash -Algorithm SHA256 $Path).Hash.ToLowerInvariant()
@@ -24,13 +25,22 @@ function Write-Checksum([string]$Path) {
 Push-Location $RepoDir
 try {
     rustup target add x86_64-pc-windows-msvc
-    cargo build --release -p formiga-farm --target x86_64-pc-windows-msvc
+    cargo build --release --locked -p formiga-farm --target x86_64-pc-windows-msvc
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
     # The Farm version comes from the binary itself, so the installer can never claim another.
-    $FarmFormatVersion = (& $Exe --farm-version).Trim()
+    # Farm is a windowed program with no console of its own, so its output is caught in a file
+    # and waited for, rather than read from a console it never opens.
+    New-Item -ItemType Directory -Force $DistDir | Out-Null
+    $Caught = Join-Path $DistDir "farm-version.txt"
+    $Run = Start-Process -FilePath $Exe -ArgumentList "--farm-version" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $Caught
+    if ($Run.ExitCode -ne 0) { throw "formiga-farm --farm-version failed" }
+    $FarmFormatVersion = (Get-Content -Raw $Caught).Trim()
+    Remove-Item $Caught
+    if ($FarmFormatVersion -notmatch '^\d+$') { throw "formiga-farm gave no Farm version: '$FarmFormatVersion'" }
     # And so does the icon, from the same picture as the window's.
     $IconDir = Join-Path $DistDir "icon"
-    & $Exe --icon $IconDir | Out-Null
+    $Run = Start-Process -FilePath $Exe -ArgumentList "--icon", "`"$IconDir`"" -NoNewWindow -Wait -PassThru
+    if ($Run.ExitCode -ne 0) { throw "formiga-farm --icon failed" }
     $Icon = Join-Path $IconDir "FormigaFarm.ico"
     if ($env:FORMIGA_SIGNTOOL_CERT_SHA1) {
         signtool sign /sha1 $env:FORMIGA_SIGNTOOL_CERT_SHA1 /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $Exe
@@ -41,6 +51,8 @@ try {
     New-Item -ItemType Directory -Force $PortableDir | Out-Null
     Copy-Item $Exe (Join-Path $PortableDir "Formiga Farm.exe")
     Copy-Item (Join-Path $RepoDir "packaging\windows\README.txt") (Join-Path $PortableDir "Read Me.txt")
+    # The MIT licence travels with every copy, in the zip and installed beside the program.
+    Copy-Item $License (Join-Path $PortableDir "License.txt")
     Compress-Archive -Force -Path (Join-Path $PortableDir "*") -DestinationPath $Portable
     Write-Checksum $Portable
 
@@ -53,6 +65,7 @@ try {
             -d "FarmVersion=$Version" `
             -d "FarmFormatVersion=$FarmFormatVersion" `
             -d "FarmIcon=$Icon" `
+            -d "FarmLicense=$License" `
             -arch x64 `
             -o $Installer `
             (Join-Path $RepoDir "packaging\windows\FormigaFarm.wxs")
