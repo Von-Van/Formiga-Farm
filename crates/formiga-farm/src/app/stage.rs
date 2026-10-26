@@ -40,10 +40,10 @@ impl FarmApp {
         ((self.clock * f64::from(fps)) as u64 % u64::from(frames.max(1))) as u8
     }
 
-    /// What to say under Formiga Hill or Home: `there`, or, for a sculpted form, that those apps
-    /// draw it as its nearest companion body for now.
+    /// What to say under Formiga Hill or Home: `there`, or, for a sculpted form a trip leaves
+    /// behind, that those apps draw it as its nearest companion body.
     fn travelling_caption(&self, there: &'static str) -> &'static str {
-        if self.shown().form.sculpt().is_some() {
+        if self.shown().form.sculpt().is_some() && !crate::drawing::TRIPS_CARRY_SCULPTS {
             "Formiga Hill and Home can't draw sculpted bodies yet,\nso it visits them as its nearest companion body, in its colours."
         } else {
             there
