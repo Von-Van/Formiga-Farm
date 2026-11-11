@@ -6,6 +6,28 @@
 
 use crate::paint::{blend, darker, lighter, rgb};
 use formiga_art::{Canvas, Rgba};
+use std::sync::OnceLock;
+use time::{OffsetDateTime, UtcOffset};
+
+/// The owner's clock's offset from UTC, read once before anything else runs: macOS will not say
+/// it once other threads are about, so asked from the window it always failed and the habitat
+/// was forever at noon. `None` if it could not be read even then.
+static LOCAL: OnceLock<Option<UtcOffset>> = OnceLock::new();
+
+/// Read the owner's clock's offset, while nothing else is running that could change it under the
+/// reading. Called first thing in `main`.
+pub fn read_local_offset() {
+    let _ = LOCAL.set(UtcOffset::current_local_offset().ok());
+}
+
+/// The hour on the owner's clock, or midday if its offset was never read or could not be.
+pub fn local_hour() -> u8 {
+    hour_at(OffsetDateTime::now_utc(), LOCAL.get().copied().flatten())
+}
+
+fn hour_at(now: OffsetDateTime, offset: Option<UtcOffset>) -> u8 {
+    offset.map_or(12, |offset| now.to_offset(offset).hour())
+}
 
 /// Pixels of the habitat to a point of the window: it is drawn small and shown large, crisp.
 pub const PIXEL: f32 = 3.0;
@@ -352,6 +374,17 @@ fn dig(a: (i32, i32), b: (i32, i32), seed: u32) -> Vec<(i32, i32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_hour_is_the_owner_s_own_and_midday_when_the_clock_will_not_say() {
+        let at = time::macros::datetime!(2026-11-11 02:30 UTC);
+        assert_eq!(
+            hour_at(at, Some(UtcOffset::from_hms(-6, 0, 0).unwrap())),
+            20
+        );
+        assert_eq!(hour_at(at, Some(UtcOffset::UTC)), 2);
+        assert_eq!(hour_at(at, None), 12);
+    }
 
     #[test]
     fn the_same_habitat_is_drawn_every_time_and_its_ants_never_jump() {

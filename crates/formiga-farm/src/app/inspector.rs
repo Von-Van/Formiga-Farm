@@ -2,7 +2,7 @@
 //! choices rather than numbers, each within the range its plan allows, and every page can be
 //! rolled at random or put back on its own.
 
-use super::{FarmApp, style};
+use super::{Dialog, FarmApp, style};
 use crate::editor::Layer;
 use eframe::egui;
 use formiga_core::forms::{
@@ -780,7 +780,8 @@ impl FarmApp {
                                     .on_hover_text("Forget this palette.")
                                     .clicked()
                                 {
-                                    forget = Some(palette.id.clone());
+                                    forget = Some((palette.id.clone(), palette.name.clone()));
+                                    ui.close();
                                 }
                             });
                         }
@@ -809,9 +810,9 @@ impl FarmApp {
             self.editor
                 .edit(None, |d| *d = crate::palettes::with_colors(d, &colors));
         }
-        if let Some(id) = forget {
-            self.store.delete_palette(&id);
-            self.palettes = self.store.palettes();
+        // Forgotten only once the owner says so: a stray click on the little "×" loses nothing.
+        if let Some((id, name)) = forget {
+            self.dialog = Some(Dialog::ForgetPalette { id, name });
         }
         if keep {
             let palette =

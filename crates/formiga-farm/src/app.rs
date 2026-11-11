@@ -114,6 +114,8 @@ enum Dialog {
     SavePreset { name: String },
     /// Making sure before a draft or a preset is thrown away.
     Delete { what: Deletable, name: String },
+    /// Making sure before a kept palette is forgotten.
+    ForgetPalette { id: String, name: String },
     /// Giving a draft or a preset another name.
     Rename { what: Deletable, name: String },
     /// Desktop ended the session.
@@ -178,6 +180,9 @@ pub struct FarmApp {
     /// What "Roll everything" leaves as it is.
     locks: crate::editor::Locks,
     pending: Option<(u32, f64)>,
+    /// The design handed to Desktop with the proposal being waited on: what Desktop keeps if it
+    /// keeps it, whatever has been changed on the workbench since.
+    proposed: Option<Design>,
     /// When Farm last looked for anything from Desktop.
     listened_at: f64,
     expected_revision: Option<String>,
@@ -293,6 +298,7 @@ impl FarmApp {
             compare: None,
             locks: crate::editor::Locks::default(),
             pending: None,
+            proposed: None,
             listened_at: f64::NEG_INFINITY,
             expected_revision,
             dialog: None,
@@ -504,6 +510,7 @@ impl FarmApp {
         match self.host.propose(&self.snapshot, kind, &design, lineage) {
             Ok(serial) => {
                 self.pending = Some((serial, self.clock));
+                self.proposed = Some(design);
                 // Look for the answer at once: a rehearsal has it already.
                 self.listened_at = f64::NEG_INFINITY;
             }
@@ -534,7 +541,12 @@ impl FarmApp {
                 match verdict {
                     Verdict::Kept { revision } => {
                         self.expected_revision = Some(revision);
-                        self.editor.arrival = self.editor.design().clone();
+                        // The look Desktop now has is the one handed to it, not anything
+                        // changed here while it was deciding.
+                        self.editor.arrival = self
+                            .proposed
+                            .take()
+                            .unwrap_or_else(|| self.editor.design().clone());
                         self.pictures.forget_before();
                         self.say(format!("{name} has their new look."), false);
                     }
@@ -658,9 +670,7 @@ impl FarmApp {
             (screen.width() / PIXEL).ceil().max(64.0) as u32,
             (screen.height() / PIXEL).ceil().max(64.0) as u32,
         ];
-        let hour = time::OffsetDateTime::now_local()
-            .map(|now| now.hour())
-            .unwrap_or(12);
+        let hour = crate::habitat::local_hour();
         let daylight = if self.snap.is_some() {
             Daylight::Day
         } else {
@@ -1052,6 +1062,20 @@ impl FarmApp {
                         }
                     });
                 }
+                Dialog::ForgetPalette { id, name } => {
+                    ui.heading(format!("Forget the palette \u{201c}{name}\u{201d}?"));
+                    ui.label("Only the palette goes. No design changes colour.");
+                    ui.horizontal(|ui| {
+                        if ui.button("Forget it").clicked() {
+                            self.store.delete_palette(id);
+                            self.palettes = self.store.palettes();
+                            keep_open = false;
+                        }
+                        if ui.button("Keep it").clicked() {
+                            keep_open = false;
+                        }
+                    });
+                }
                 Dialog::Rename { what, name } => {
                     ui.heading("Rename");
                     let mut text = name.clone();
@@ -1360,6 +1384,33 @@ mod tests {
         app.listen(&egui::Context::default());
         assert!(app.dialog.is_none());
         assert!(app.toast.as_ref().is_some_and(|t| !t.trouble));
+    }
+
+    #[test]
+    fn edits_made_while_desktop_decides_are_not_taken_as_kept() {
+        let mut app = app(Some(0));
+        let orca = crate::presets::find("animal.orca").unwrap().design;
+        app.editor
+            .start_from(orca.clone(), Some("animal.orca".into()));
+        app.apply();
+        // Changed again before Desktop's answer is heard.
+        app.editor.randomize(Layer::Finish, 9);
+        let since = app.editor.design().clone();
+        assert_ne!(since, orca);
+        app.listen(&egui::Context::default());
+        assert_eq!(
+            app.editor.arrival, orca,
+            "Desktop has the look it was handed"
+        );
+        assert_eq!(
+            app.editor.design(),
+            &since,
+            "the later edit is still on the workbench"
+        );
+        assert_eq!(
+            app.expected_revision.as_deref(),
+            Some(orca.revision().as_str())
+        );
     }
 
     #[test]

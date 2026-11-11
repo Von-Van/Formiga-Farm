@@ -229,6 +229,7 @@ fn review_scale(detail: u32) -> i32 {
 }
 
 fn main() -> Result<()> {
+    habitat::read_local_offset();
     let raw: Vec<String> = std::env::args().skip(1).collect();
     match raw.first().map(String::as_str) {
         Some("--farm-version") => {

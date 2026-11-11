@@ -4,6 +4,15 @@ This page records what changed in each version of Formiga Farm. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## Unreleased
+
+- The ant farm behind the workbench follows the time of day on macOS again. Farm asked for the
+  local time after its window had started other threads, which macOS refuses, so the habitat was
+  always drawn at noon; it now reads the clock's offset once as it starts.
+- Changes made while Desktop is still deciding on a look are no longer taken as kept. "Before" and
+  "Restore arrival" show the look Desktop actually has, the one that was handed to it.
+- Forgetting one of your palettes asks first, so a stray click on its little "×" loses nothing.
+
 ## 0.1.0 - 2026-10-12
 
 The first preview of Formiga Farm. It is a workshop for drawing a new Formiga, or reshaping
