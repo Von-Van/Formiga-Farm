@@ -6,6 +6,9 @@ version is tagged.
 
 ## Unreleased
 
+- Built on Formiga Desktop 0.68.23 (from 0.67.14), so Farm reads colonies Desktop 0.68.23 has
+  saved. A creature celebrating holds its toy over its face the way Desktop now draws it, so the
+  Celebrate preview matches the desktop again.
 - The ant farm behind the workbench follows the time of day on macOS again. Farm asked for the
   local time after its window had started other threads, which macOS refuses, so the habitat was
   always drawn at noon; it now reads the clock's offset once as it starts.

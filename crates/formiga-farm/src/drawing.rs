@@ -8,7 +8,7 @@
 use formiga_art::forms::{FINEST_DETAIL, Intent};
 use formiga_art::{
     AccessoryArt, BodyClip, Canvas, CreatureRenderer, ExpressionKind, EyelidPose, FACE_FRAME_SIZE,
-    FRAME_SIZE, FaceRenderState, GazeDirection,
+    FRAME_SIZE, FaceRenderState, GazeDirection, shows_held_by_default,
 };
 use formiga_core::forms::Design;
 use formiga_core::{ActionKind, AppearanceGenome};
@@ -130,6 +130,25 @@ pub fn dressed_intent_frame(
             let pixel = face.get(x, y);
             if pixel.a > 0 {
                 canvas.set(origin_x + x, origin_y + y, pixel);
+            }
+        }
+    }
+    // What the clip holds by default, a toy at play or a snack at a meal, goes over the face as
+    // Desktop draws it. It is frame-sized pixel art, so each of its pixels is a square here.
+    if let Some(held) = body.held.filter(|_| shows_held_by_default(intent.clip())) {
+        let mut layer = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+        held.paint(&mut layer, facing_right);
+        for y in 0..FRAME_SIZE as i32 {
+            for x in 0..FRAME_SIZE as i32 {
+                let pixel = layer.get(x, y);
+                if pixel.a == 0 {
+                    continue;
+                }
+                for dy in 0..res {
+                    for dx in 0..res {
+                        canvas.set(x * res + dx, y * res + dy, pixel);
+                    }
+                }
             }
         }
     }
